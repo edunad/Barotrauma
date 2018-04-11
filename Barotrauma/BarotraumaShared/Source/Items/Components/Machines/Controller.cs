@@ -18,7 +18,7 @@ namespace Barotrauma.Items.Components
         }
     }
 
-    class Controller : ItemComponent
+    partial class Controller : ItemComponent
     {
         //where the limbs of the user should be positioned when using the controller
         private List<LimbPos> limbPositions;
@@ -37,6 +37,12 @@ namespace Barotrauma.Items.Components
         {
             get { return userPos; }
             set { userPos = value; }
+        }
+
+        [Serialize(false, true)]
+        public bool RequireAimToUse
+        {
+            get; set;
         }
 
         public Controller(Item item, XElement element)
@@ -74,8 +80,9 @@ namespace Barotrauma.Items.Components
         public override void Update(float deltaTime, Camera cam) 
         {
             this.cam = cam;
-
+            
             if (character == null 
+                || character.Removed
                 || character.SelectedConstruction != item
                 || !character.CanInteractWith(item))
             {
@@ -147,11 +154,19 @@ namespace Barotrauma.Items.Components
 
         public override bool Use(float deltaTime, Character activator = null)
         {
-            if (character == null || activator != character || character.SelectedConstruction != item || !character.CanInteractWith(item))
+            if (activator != character)
+            {
+                return false;
+            }
+
+            if (character == null || character.Removed ||
+                character.SelectedConstruction != item || !character.CanInteractWith(item))
             {
                 character = null;
                 return false;
             }
+
+            if (RequireAimToUse && !activator.IsKeyDown(InputType.Aim)) return false;
 
             item.SendSignal(0, "1", "trigger_out", character);
             
@@ -160,37 +175,33 @@ namespace Barotrauma.Items.Components
             return true;
         }
 
-        public override void SecondaryUse(float deltaTime, Character character = null)
+        public override bool SecondaryUse(float deltaTime, Character character = null)
         {
-            if (this.character == null || this.character != character || this.character.SelectedConstruction != item || !character.CanInteractWith(item))
+            if (this.character != character)
             {
-                character = null;
-                return;
+                return false;
             }
 
-            Entity focusTarget = null;
-
-            if (character == null) return;
-            
-
-            foreach (Connection c in item.Connections)
+            if (this.character == null || character.Removed ||
+                this.character.SelectedConstruction != item || !character.CanInteractWith(item))
             {
-                if (c.Name != "position_out") continue;
-
-                foreach (Connection c2 in c.Recipients)
-                {
-                    if (c2 == null || c2.Item == null || !c2.Item.Prefab.FocusOnSelected) continue;
-
-                    focusTarget = c2.Item;
-
-                    break;
-                }
+                this.character = null;
+                return false;
             }
+            if (character == null) return false;     
 
+            Entity focusTarget = GetFocusTarget();
             if (focusTarget == null)
             {
-                item.SendSignal(0, XMLExtensions.Vector2ToString(character.CursorWorldPosition), "position_out", character);
-                return;
+                Vector2 centerPos = new Vector2(item.WorldRect.Center.X, item.WorldRect.Center.Y);
+
+                Vector2 offset = character.CursorWorldPosition - centerPos;
+                offset.Y = -offset.Y;
+
+                float targetRotation = MathUtils.WrapAngleTwoPi(MathUtils.VectorToAngle(offset));
+
+                item.SendSignal(0, targetRotation.ToString(), "position_out", character);
+                return false;
             }
             
             character.ViewTarget = focusTarget;
@@ -206,8 +217,43 @@ namespace Barotrauma.Items.Components
             
             if (!character.IsRemotePlayer || character.ViewTarget == focusTarget)
             {
-                item.SendSignal(0, XMLExtensions.Vector2ToString(character.CursorWorldPosition), "position_out", character);
+                Vector2 centerPos = new Vector2(item.WorldRect.Center.X, item.WorldRect.Center.Y);
+
+                Item targetItem = focusTarget as Item;
+                if (targetItem != null)
+                {
+                    Turret turret = targetItem.GetComponent<Turret>();
+                    if (turret != null)
+                    {
+                        centerPos = new Vector2(targetItem.WorldRect.X + turret.BarrelPos.X, targetItem.WorldRect.Y - turret.BarrelPos.Y);
+                    }
+                }
+
+                Vector2 offset = character.CursorWorldPosition - centerPos;
+                offset.Y = -offset.Y;
+
+                float targetRotation = MathUtils.WrapAngleTwoPi(MathUtils.VectorToAngle(offset));
+
+                item.SendSignal(0, targetRotation.ToString(), "position_out", character);
             }
+
+            return true;
+        }
+
+        private Item GetFocusTarget()
+        {
+            foreach (Connection c in item.Connections)
+            {
+                if (c.Name != "position_out") continue;
+
+                foreach (Connection c2 in c.Recipients)
+                {
+                    if (c2 == null || c2.Item == null || !c2.Item.Prefab.FocusOnSelected) continue;
+                    return c2.Item;
+                }
+            }
+
+            return null;
         }
 
         public override bool Pick(Character picker)
@@ -223,6 +269,8 @@ namespace Barotrauma.Items.Components
 
         private void CancelUsing(Character character)
         {
+            if (character == null || character.Removed) return;
+
             foreach (LimbPos lb in limbPositions)
             {
                 Limb limb = character.AnimController.GetLimb(lb.limbType);
@@ -240,10 +288,10 @@ namespace Barotrauma.Items.Components
 
         public override bool Select(Character activator)
         {
-            if (activator == null) return false;
+            if (activator == null || activator.Removed) return false;
 
             //someone already using the item
-            if (character != null)
+            if (character != null && !character.Removed)
             {
                 if (character == activator)
                 {
@@ -255,8 +303,7 @@ namespace Barotrauma.Items.Components
             }
             else
             {
-                character = activator;
-                    
+                character = activator;                    
                 IsActive = true;
             }
 

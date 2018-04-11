@@ -7,7 +7,9 @@
     
     description="Serves as a hub for power distribution and relaying signals between devices.">
     
-    <Sprite texture="junctionbox.png" depth="0.8" canflipx="false"/>
+    <Sprite texture="junctionbox.png" sourcerect="0,0,70,84" depth="0.8" canflipx="false"/>
+    <BrokenSprite texture="junctionbox.png" sourcerect="70,0,70,84" depth="0.8" maxcondition="50" fadein="true"/>
+    <BrokenSprite texture="junctionbox.png" sourcerect="140,0,70,84" depth="0.8" maxcondition="0"/>
 
     <fixrequirement name="Electrical repairs">
       <skill name="Electrical Engineering" level="40"/>
@@ -67,11 +69,10 @@
   <Item
     name="Supercapacitor"
     category="Electrical"
-    linkable="true"
-    
+    linkable="true"    
     description="Can deliver charge much faster than batteries.">
 
-    <Sprite texture ="supercapacitor.png" depth="0.8"/>
+    <Sprite texture="supercapacitor.png" depth="0.8" sourcerect="0,0,77,88"/>
 
     <PowerContainer capacity="20.0" maxrechargespeed="20.0" maxoutput="2000000.0" canbeselected = "true">
       <GuiFrame rect="0,0,0.3,0.3" alignment="Center" style="ItemUI"/>

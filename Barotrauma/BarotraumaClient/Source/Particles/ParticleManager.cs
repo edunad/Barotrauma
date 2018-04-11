@@ -2,6 +2,7 @@
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Xml.Linq;
 
 namespace Barotrauma.Particles
@@ -22,28 +23,33 @@ namespace Barotrauma.Particles
 
         private Dictionary<string, ParticlePrefab> prefabs;
 
-        Camera cam;
+        private Camera cam;
         
-        public ParticleManager(string configFile, Camera cam)
+        public ParticleManager(Camera cam)
         {
             this.cam = cam;
 
             particles = new Particle[MaxParticles];
+        }
 
-            XDocument doc = XMLExtensions.TryLoadXml(configFile);
-            if (doc == null || doc.Root == null) return;
-
+        public void LoadPrefabs()
+        {
             prefabs = new Dictionary<string, ParticlePrefab>();
-
-            foreach (XElement element in doc.Root.Elements())
+            foreach (string configFile in GameMain.Config.SelectedContentPackage.GetFilesOfType(ContentType.Particles))
             {
-                if (prefabs.ContainsKey(element.Name.ToString()))
+                XDocument doc = XMLExtensions.TryLoadXml(configFile);
+                if (doc == null || doc.Root == null) continue;
+
+                foreach (XElement element in doc.Root.Elements())
                 {
-                    DebugConsole.ThrowError("Error in " + configFile + "! Each particle prefab must have a unique name.");
-                    continue;
+                    if (prefabs.ContainsKey(element.Name.ToString()))
+                    {
+                        DebugConsole.ThrowError("Error in " + configFile + "! Each particle prefab must have a unique name.");
+                        continue;
+                    }
+                    prefabs.Add(element.Name.ToString(), new ParticlePrefab(element));
                 }
-                prefabs.Add(element.Name.ToString(), new ParticlePrefab(element));
-            }
+            }         
         }
 
         public Particle CreateParticle(string prefabName, Vector2 position, float angle, float speed, Hull hullGuess = null)
@@ -85,6 +91,11 @@ namespace Barotrauma.Particles
             particleCount++;
 
             return particles[particleCount - 1];
+        }
+
+        public List<ParticlePrefab> GetPrefabList()
+        {
+            return prefabs.Values.ToList();
         }
 
         public ParticlePrefab FindPrefab(string prefabName)

@@ -26,14 +26,14 @@ namespace Barotrauma.Items.Components
         
         private float displayBorderSize;
                 
-        [HasDefaultValue(10000.0f, false)]
+        [Serialize(10000.0f, false)]
         public float Range
         {
             get { return range; }
             set { range = MathHelper.Clamp(value, 0.0f, 100000.0f); }
         }
         
-        [HasDefaultValue(false, false)]
+        [Serialize(false, false)]
         public bool DetectSubmarineWalls
         {
             get;
@@ -109,7 +109,7 @@ namespace Barotrauma.Items.Components
         {
             currPowerConsumption = powerConsumption;
 
-            base.Update(deltaTime, cam);
+            UpdateOnActiveEffects(deltaTime);
             
             if (voltage >= minVoltage || powerConsumption <= 0.0f)
             {

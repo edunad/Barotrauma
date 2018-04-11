@@ -26,13 +26,13 @@ namespace Barotrauma
             else
             {
                 Vector2 placeSize = size;
-                if (resizeHorizontal) placeSize.X = position.X - placePosition.X;
-                if (resizeVertical) placeSize.Y = placePosition.Y - position.Y;
+                if (ResizeHorizontal) placeSize.X = position.X - placePosition.X;
+                if (ResizeVertical) placeSize.Y = placePosition.Y - position.Y;
 
                 newRect = Submarine.AbsRect(placePosition, placeSize);
             }
 
-            sprite.DrawTiled(spriteBatch, new Vector2(newRect.X, -newRect.Y), new Vector2(newRect.Width, newRect.Height), Color.White);
+            sprite.DrawTiled(spriteBatch, new Vector2(newRect.X, -newRect.Y), new Vector2(newRect.Width, newRect.Height));
 
             GUI.DrawRectangle(spriteBatch, new Rectangle(newRect.X - GameMain.GraphicsWidth, -newRect.Y, newRect.Width + GameMain.GraphicsWidth * 2, newRect.Height), Color.White);
             GUI.DrawRectangle(spriteBatch, new Rectangle(newRect.X, -newRect.Y - GameMain.GraphicsHeight, newRect.Width, newRect.Height + GameMain.GraphicsHeight * 2), Color.White);

@@ -4,10 +4,11 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using Microsoft.Xna.Framework.Input;
 
 namespace Barotrauma
 {
-    partial class Hull : MapEntity, IPropertyObject, IServerSerializable
+    partial class Hull : MapEntity, ISerializableEntity, IServerSerializable
     {
         public const int MaxDecalsPerHull = 10;
 
@@ -56,7 +57,38 @@ namespace Barotrauma
 
             return decal;
         }
-        
+
+        public override void UpdateEditing(Camera cam)
+        {
+            if (!PlayerInput.KeyDown(Keys.Space)) return;
+            bool lClick = PlayerInput.LeftButtonClicked();
+            bool rClick = PlayerInput.RightButtonClicked();
+            if (!lClick && !rClick) return;
+
+            Vector2 position = cam.ScreenToWorld(PlayerInput.MousePosition);
+
+            if (lClick)
+            {
+                foreach (MapEntity entity in mapEntityList)
+                {
+                    if (entity == this || !entity.IsHighlighted) continue;
+                    if (!entity.IsMouseOn(position)) continue;
+                    
+                    if (entity.Linkable && entity.linkedTo != null) entity.linkedTo.Add(this);
+                }
+            }
+            else
+            {
+                foreach (MapEntity entity in mapEntityList)
+                {
+                    if (entity == this || !entity.IsHighlighted) continue;
+                    if (!entity.IsMouseOn(position)) continue;
+                    
+                    if (entity.linkedTo != null && entity.linkedTo.Contains(this)) entity.linkedTo.Remove(this);
+                }
+            }
+        }
+
         partial void UpdateProjSpecific(float deltaTime, Camera cam)
         {
             if (EditWater)
@@ -115,10 +147,10 @@ namespace Barotrauma
                 soundVolume = soundVolume + ((strongestFlow < 100.0f) ? -deltaTime * 0.5f : deltaTime * 0.5f);
                 soundVolume = MathHelper.Clamp(soundVolume, 0.0f, 1.0f);
 
-                int index = (int)Math.Floor(strongestFlow / 100.0f);
-                index = Math.Min(index, 2);
+                int index = (int)Math.Floor(MathHelper.Lerp(0, SoundPlayer.FlowSounds.Count - 1, strongestFlow / 600.0f));
+                index = Math.Min(index, SoundPlayer.FlowSounds.Count - 1);
 
-                var flowSound = SoundPlayer.flowSounds[index];
+                var flowSound = SoundPlayer.FlowSounds[index];
                 if (flowSound != currentFlowSound && soundIndex > -1)
                 {
                     Sounds.SoundManager.Stop(soundIndex);
@@ -158,16 +190,18 @@ namespace Barotrauma
         {
             Rectangle hullDrawRect = rect;
             if (Submarine != null) hullDrawRect.Location += Submarine.DrawPosition.ToPoint();
-                        
+
+            float depth = 1.0f;
             foreach (Decal d in decals)
             {
-                d.Draw(spriteBatch, this);
+                d.Draw(spriteBatch, this, depth);
+                depth -= 0.000001f;
             }
         }
 
         public override void Draw(SpriteBatch spriteBatch, bool editing, bool back = true)
         {
-            if (back && Screen.Selected != GameMain.EditMapScreen)
+            if (back && Screen.Selected != GameMain.SubEditorScreen)
             {
                 DrawDecals(spriteBatch);
                 return;

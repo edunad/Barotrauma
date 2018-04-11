@@ -1,6 +1,7 @@
 ﻿using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 
 namespace Barotrauma
@@ -13,14 +14,10 @@ namespace Barotrauma
 
     partial class MapEntityPrefab
     {
-        public static List<MapEntityPrefab> list = new List<MapEntityPrefab>();
+        public readonly static List<MapEntityPrefab> List = new List<MapEntityPrefab>();
 
         protected string name;
-
-        public List<string> tags;
-
-        protected bool isLinkable;
-
+        
         public Sprite sprite;
 
         //the position where the structure is being placed (needed when stretching the structure)
@@ -29,17 +26,25 @@ namespace Barotrauma
         protected ConstructorInfo constructor;
 
         //is it possible to stretch the entity horizontally/vertically
-        public bool resizeHorizontal { get; protected set; }
-        public bool resizeVertical { get; protected set; }
+        [Serialize(false, false)]
+        public bool ResizeHorizontal { get; protected set; }
+        [Serialize(false, false)]
+        public bool ResizeVertical { get; protected set; }
 
         //which prefab has been selected for placing
         protected static MapEntityPrefab selected;
 
-        protected int price;
+        private int price;
 
         public string Name
         {
             get { return name; }
+        }
+
+        public List<string> Tags
+        {
+            get;
+            protected set;
         }
 
         public static MapEntityPrefab Selected
@@ -48,43 +53,46 @@ namespace Barotrauma
             set { selected = value; }
         }
 
-
+        [Serialize("", false)]
         public string Description
         {
             get;
             protected set;
         }
-
-        public virtual bool IsLinkable
+        
+        [Serialize(false, false)]
+        public bool Linkable
         {
-            get { return isLinkable; }
+            get;
+            private set;
         }
-
-        public bool ResizeHorizontal
-        {
-            get { return resizeHorizontal; }
-        }
-
-        public bool ResizeVertical
-        {
-            get { return resizeVertical; }
-        }
-
+                
         public MapEntityCategory Category
         {
             get;
             protected set;
         }
 
+        [Serialize("1.0,1.0,1.0,1.0", false)]
         public Color SpriteColor
         {
             get;
             protected set;
         }
 
+        [Serialize(0, false)]
         public int Price
         {
             get { return price; }
+            protected set { price = Math.Max(value, 0); }
+        }
+
+        //If a matching prefab is not found when loading a sub, the game will attempt to find a prefab with a matching alias.
+        //(allows changing names while keeping backwards compatibility with older sub files)
+        public string[] Aliases
+        {
+            get;
+            protected set;
         }
 
         public static void Init()
@@ -93,33 +101,27 @@ namespace Barotrauma
             ep.name = "Hull";
             ep.Description = "Hulls determine which parts are considered to be \"inside the sub\". Generally every room should be enclosed by a hull.";
             ep.constructor = typeof(Hull).GetConstructor(new Type[] { typeof(MapEntityPrefab), typeof(Rectangle) });
-            ep.resizeHorizontal = true;
-            ep.resizeVertical = true;
-            list.Add(ep);
+            ep.ResizeHorizontal = true;
+            ep.ResizeVertical = true;
+            List.Add(ep);
 
             ep = new MapEntityPrefab();
             ep.name = "Gap";
             ep.Description = "Gaps allow water and air to flow between two hulls. ";
             ep.constructor = typeof(Gap).GetConstructor(new Type[] { typeof(MapEntityPrefab), typeof(Rectangle) });
-            ep.resizeHorizontal = true;
-            ep.resizeVertical = true;
-            list.Add(ep);
+            ep.ResizeHorizontal = true;
+            ep.ResizeVertical = true;
+            List.Add(ep);
 
             ep = new MapEntityPrefab();
             ep.name = "Waypoint";
             ep.constructor = typeof(WayPoint).GetConstructor(new Type[] { typeof(MapEntityPrefab), typeof(Rectangle) });
-            list.Add(ep);
+            List.Add(ep);
 
             ep = new MapEntityPrefab();
             ep.name = "Spawnpoint";
             ep.constructor = typeof(WayPoint).GetConstructor(new Type[] { typeof(MapEntityPrefab), typeof(Rectangle) });
-            list.Add(ep);
-            
-            //ep = new MapEntityPrefab();
-            //ep.name = "Linked Submarine";
-            //ep.Category = 0;
-            //list.Add(ep);
-
+            List.Add(ep);
         }
 
         public MapEntityPrefab()
@@ -141,8 +143,8 @@ namespace Barotrauma
             {
                 Vector2 position = Submarine.MouseToWorldGrid(cam, Submarine.MainSub);
 
-                if (resizeHorizontal) placeSize.X = position.X - placePosition.X;
-                if (resizeVertical) placeSize.Y = placePosition.Y - position.Y;
+                if (ResizeHorizontal) placeSize.X = position.X - placePosition.X;
+                if (ResizeVertical) placeSize.Y = placePosition.Y - position.Y;
                 
                 Rectangle newRect = Submarine.AbsRect(placePosition, placeSize);
                 newRect.Width = (int)Math.Max(newRect.Width, Submarine.GridSize.X);
@@ -187,6 +189,52 @@ namespace Barotrauma
             {
                 return false;
             }
+        }
+
+        public static MapEntityPrefab Find(string name, bool caseSensitive = false)
+        {
+            if (caseSensitive)
+            {
+                foreach (MapEntityPrefab prefab in List)
+                {
+                    if (prefab.name == name || (prefab.Aliases != null && prefab.Aliases.Contains(name))) return prefab;
+                }
+            }
+            else
+            {
+                name = name.ToLowerInvariant();
+                foreach (MapEntityPrefab prefab in List)
+                {
+                    if (prefab.name.ToLowerInvariant() == name || (prefab.Aliases != null && prefab.Aliases.Any(a => a.ToLowerInvariant() == name))) return prefab;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Check if the name or any of the aliases of this prefab match the given name.
+        /// </summary>
+        public bool NameMatches(string name, bool caseSensitive = false)
+        {
+            if (caseSensitive)
+            {
+                return this.name == name || (Aliases != null && Aliases.Any(a => a == name));
+            }
+            else
+            {
+                name = name.ToLowerInvariant();
+                return this.name.ToLowerInvariant() == name || (Aliases != null && Aliases.Any(a => a.ToLowerInvariant() == name));
+            }
+        }
+
+        public bool NameMatches(IEnumerable<string> allowedNames, bool caseSensitive = false)
+        {
+            foreach (string name in allowedNames)
+            {
+                if (NameMatches(name, caseSensitive)) return true;
+            }
+            return false;
         }
 
         //a method that allows the GUIListBoxes to check through a delegate if the entityprefab is still selected

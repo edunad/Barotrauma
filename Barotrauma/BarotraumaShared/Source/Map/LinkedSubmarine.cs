@@ -43,7 +43,7 @@ namespace Barotrauma
 
         private XElement saveElement;
 
-        public override bool IsLinkable
+        public override bool Linkable
         {
             get
             {
@@ -105,7 +105,7 @@ namespace Barotrauma
             List<Vector2> points = new List<Vector2>();
 
             var wallPrefabs =
-                MapEntityPrefab.list.FindAll(mp => (mp is StructurePrefab) && ((StructurePrefab)mp).HasBody);
+                MapEntityPrefab.List.FindAll(mp => (mp is StructurePrefab) && ((StructurePrefab)mp).Body);
 
             foreach (XElement element in rootElement.Elements())
             {
@@ -131,7 +131,7 @@ namespace Barotrauma
 
             LinkedSubmarine linkedSub = null;
 
-            if (Screen.Selected == GameMain.EditMapScreen)
+            if (Screen.Selected == GameMain.SubEditorScreen)
             {
                 //string filePath = ToolBox.GetAttributeString(element, "filepath", "");
                 

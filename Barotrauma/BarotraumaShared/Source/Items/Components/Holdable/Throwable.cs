@@ -11,8 +11,9 @@ namespace Barotrauma.Items.Components
         float throwPos;
 
         bool throwing;
+        bool throwDone;
 
-        [HasDefaultValue(1.0f, false)]
+        [Serialize(1.0f, false)]
         public float ThrowForce
         {
             get { return throwForce; }
@@ -27,18 +28,14 @@ namespace Barotrauma.Items.Components
 
         public override bool Use(float deltaTime, Character character = null)
         {
-            if (character == null) return false;
-            if (!character.IsKeyDown(InputType.Aim) || throwing) return false;
-            
-            throwing = true;
-
-            IsActive = true;
-            return true;
+            return true; //We do the actual throwing in Aim because Use might be used by chems
         }
 
-        public override void SecondaryUse(float deltaTime, Character character = null)
+        public override bool SecondaryUse(float deltaTime, Character character = null)
         {
-            if (throwing) return;
+            if (!throwDone) return false; //This should only be triggered in update
+            throwDone = false;
+            return true;
         }
 
         public override void Drop(Character dropper)
@@ -57,7 +54,14 @@ namespace Barotrauma.Items.Components
         public override void Update(float deltaTime, Camera cam)
         {
             if (!item.body.Enabled) return;
-            if (!picker.HasSelectedItem(item)) IsActive = false;
+            if (picker == null || picker.Removed || !picker.HasSelectedItem(item))
+            {
+                IsActive = false;
+                return;
+            }
+
+            if (picker.IsKeyDown(InputType.Aim) && picker.IsKeyHit(InputType.Use))
+                throwing = true;
 
             if (!picker.IsKeyDown(InputType.Aim) && !throwing) throwPos = 0.0f;
 
@@ -73,13 +77,13 @@ namespace Barotrauma.Items.Components
             {
                 if (picker.IsKeyDown(InputType.Aim))
                 {
-                    throwPos = (float)System.Math.Min(throwPos+deltaTime*5.0f, MathHelper.Pi*0.7f);
+                    throwPos = (float)System.Math.Min(throwPos + deltaTime * 5.0f, MathHelper.Pi * 0.7f);
 
                     ac.HoldItem(deltaTime, item, handlePos, new Vector2(0.6f, -0.0f), new Vector2(-0.3f, 0.2f), false, throwPos);
                 }
                 else
                 {
-                    ac.HoldItem(deltaTime, item, handlePos, new Vector2(throwPos, 0.0f), aimPos, false, 0.0f);
+                    ac.HoldItem(deltaTime, item, handlePos, holdPos, aimPos, false, holdAngle);
                 }
             }
             else
@@ -93,7 +97,7 @@ namespace Barotrauma.Items.Components
                     Vector2 throwVector = picker.CursorWorldPosition - picker.WorldPosition;
                     throwVector = Vector2.Normalize(throwVector);
 
-                    GameServer.Log(picker.Name + " threw " + item.Name, ServerLog.MessageType.ItemInteraction);
+                    GameServer.Log(picker.LogName + " threw " + item.Name, ServerLog.MessageType.ItemInteraction);
 
                     item.Drop();
                     item.body.ApplyLinearImpulse(throwVector * throwForce * item.body.Mass * 3.0f);
@@ -103,7 +107,8 @@ namespace Barotrauma.Items.Components
 
                     Limb rightHand = ac.GetLimb(LimbType.RightHand);
                     item.body.AngularVelocity = rightHand.body.AngularVelocity;
-
+                    throwDone = true;
+                    ApplyStatusEffects(ActionType.OnSecondaryUse, deltaTime, picker); //Stun grenades, flares, etc. all have their throw-related things handled in "onSecondaryUse"
                     throwing = false;
                 }
             }

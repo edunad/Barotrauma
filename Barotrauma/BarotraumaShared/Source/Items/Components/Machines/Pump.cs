@@ -15,7 +15,7 @@ namespace Barotrauma.Items.Components
         
         public Hull hull1;
 
-        [HasDefaultValue(0.0f, true)]
+        [Serialize(0.0f, true)]
         public float FlowPercentage
         {
             get { return flowPercentage; }
@@ -27,7 +27,7 @@ namespace Barotrauma.Items.Components
             }
         }
 
-        [HasDefaultValue(80.0f, false)]
+        [Serialize(80.0f, false)]
         public float MaxFlow
         {
             get { return maxFlow; }
@@ -157,11 +157,11 @@ namespace Barotrauma.Items.Components
             {
                 if (newFlowPercentage != FlowPercentage)
                 {
-                    GameServer.Log(c.Character + " set the pumping speed of " + item.Name + " to " + (int)(newFlowPercentage) + " %", ServerLog.MessageType.ItemInteraction);
+                    GameServer.Log(c.Character.LogName + " set the pumping speed of " + item.Name + " to " + (int)(newFlowPercentage) + " %", ServerLog.MessageType.ItemInteraction);
                 }
                 if (newIsActive != IsActive)
                 {
-                    GameServer.Log(c.Character + (newIsActive ? " turned on " : " turned off ") + item.Name, ServerLog.MessageType.ItemInteraction);
+                    GameServer.Log(c.Character.LogName + (newIsActive ? " turned on " : " turned off ") + item.Name, ServerLog.MessageType.ItemInteraction);
                 }
 
                 FlowPercentage  = newFlowPercentage;

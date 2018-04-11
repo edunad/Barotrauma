@@ -4,6 +4,7 @@ using System.Xml.Linq;
 using Barotrauma.Networking;
 using Lidgren.Network;
 #if CLIENT
+using Microsoft.Xna.Framework.Graphics;
 using Barotrauma.Lights;
 #endif
 
@@ -21,17 +22,25 @@ namespace Barotrauma.Items.Components
 
         private bool castShadows;
 
-        [Editable, HasDefaultValue(100.0f, true)]
+        public PhysicsBody ParentBody;
+
+        [Editable(0.0f, 2048.0f), Serialize(100.0f, true)]
         public float Range
         {
             get { return range; }
             set
             {
                 range = MathHelper.Clamp(value, 0.0f, 2048.0f);
+#if CLIENT
+                if (light != null) light.Range = range;
+#endif
             }
         }
 
-        [Editable, HasDefaultValue(true, true)]
+        public float Rotation;
+
+        [Editable(ToolTip = "Should structures cast shadows when light from this light source hits them. "+
+            "Disabling shadows increases the performance of the game, and is recommended for lights with a short range."), Serialize(true, true)]
         public bool CastShadows
         {
             get { return castShadows; }
@@ -44,7 +53,7 @@ namespace Barotrauma.Items.Components
             }
         }
 
-        [Editable, HasDefaultValue(false, true)]
+        [Editable, Serialize(false, true)]
         public bool IsOn
         {
             get { return IsActive; }
@@ -57,7 +66,7 @@ namespace Barotrauma.Items.Components
             }
         }
         
-        [HasDefaultValue(0.0f, false)]
+        [Serialize(0.0f, false)]
         public float Flicker
         {
             get { return flicker; }
@@ -67,18 +76,16 @@ namespace Barotrauma.Items.Components
             }
         }
 
-        [InGameEditable, HasDefaultValue("1.0,1.0,1.0,1.0", true)]
-        public string LightColor
+        [InGameEditable, Serialize("1.0,1.0,1.0,1.0", true)]
+        public Color LightColor
         {
-            get { return XMLExtensions.Vector4ToString(lightColor.ToVector4(), "0.00"); }
+            get { return lightColor; }
             set
             {
-                Vector4 newColor = XMLExtensions.ParseToVector4(value, false);
-                newColor.X = MathHelper.Clamp(newColor.X, 0.0f, 1.0f);
-                newColor.Y = MathHelper.Clamp(newColor.Y, 0.0f, 1.0f);
-                newColor.Z = MathHelper.Clamp(newColor.Z, 0.0f, 1.0f);
-                newColor.W = MathHelper.Clamp(newColor.W, 0.0f, 1.0f);
-                lightColor = new Color(newColor);
+                lightColor = value;
+#if CLIENT
+                if (light != null) light.Color = lightColor;
+#endif
             }
         }
 
@@ -118,45 +125,43 @@ namespace Barotrauma.Items.Components
 #endif
 
             IsActive = IsOn;
-
-            //foreach (XElement subElement in element.Elements())
-            //{
-            //    if (subElement.Name.ToString().ToLowerInvariant() != "sprite") continue;
-
-            //    light.LightSprite = new Sprite(subElement);
-            //    break;
-            //}
         }
         
         public override void Update(float deltaTime, Camera cam)
         {
-            base.Update(deltaTime, cam);
+            UpdateOnActiveEffects(deltaTime);
 
 #if CLIENT
             light.ParentSub = item.Submarine;
-#endif
-            
-#if CLIENT
             if (item.Container != null)
             {
                 light.Color = Color.Transparent;
                 return;
             }
+            light.Position = ParentBody != null ? ParentBody.Position : item.Position;
 #endif
 
-            if (item.body != null)
+            PhysicsBody body = ParentBody ?? item.body;
+
+            if (body != null)
             {
 #if CLIENT
-                light.Position = item.Position;
-                light.Rotation = item.body.Dir > 0.0f ? item.body.Rotation : item.body.Rotation - MathHelper.Pi;
+                light.Rotation = body.Dir > 0.0f ? body.Rotation : body.Rotation - MathHelper.Pi;
+                light.LightSpriteEffect = (body.Dir > 0.0f) ? SpriteEffects.None : SpriteEffects.FlipVertically;
 #endif
-                if (!item.body.Enabled)
+                if (!body.Enabled)
                 {
 #if CLIENT
                     light.Color = Color.Transparent;
 #endif
                     return;
                 }
+            }
+            else
+            {
+#if CLIENT
+                light.Rotation = -Rotation;
+#endif
             }
             
             if (powerConsumption == 0.0f)
@@ -187,19 +192,17 @@ namespace Barotrauma.Items.Components
 
             voltage = 0.0f;
         }
-        
-        public override bool Use(float deltaTime, Character character = null)
-        {
-            return true;
-        }
 
+#if CLIENT
         protected override void RemoveComponentSpecific()
         {
             base.RemoveComponentSpecific();
-
-#if CLIENT
             light.Remove();
+        }
 #endif
+        public override bool Use(float deltaTime, Character character = null)
+        {
+            return true;
         }
 
         public override void ReceiveSignal(int stepsTaken, string signal, Connection connection, Item source, Character sender, float power=0.0f)
@@ -215,7 +218,7 @@ namespace Barotrauma.Items.Components
                     IsActive = (signal != "0");                   
                     break;
                 case "set_color":
-                    LightColor = signal;
+                    LightColor = XMLExtensions.ParseColor(signal, false);
                     break;
             }
         }

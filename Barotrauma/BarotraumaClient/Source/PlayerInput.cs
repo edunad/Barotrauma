@@ -10,8 +10,10 @@ namespace Barotrauma
         static KeyboardState keyboardState, oldKeyboardState;
 
         static double timeSinceClick;
+        static Point lastClickPosition;
 
-        const double doubleClickDelay = 0.4;
+        const float DoubleClickDelay = 0.4f;
+        const float MaxDoubleClickDistance = 10.0f;
 
         static bool doubleClicked;
 
@@ -151,9 +153,14 @@ namespace Barotrauma
             doubleClicked = false;
             if (LeftButtonClicked())
             {
-                if (timeSinceClick < doubleClickDelay) doubleClicked = true;
+                if (timeSinceClick < DoubleClickDelay &&
+                    (mouseState.Position - lastClickPosition).ToVector2().Length() < MaxDoubleClickDistance)
+                {
+                    doubleClicked = true;
+                }
+                lastClickPosition = mouseState.Position;
                 timeSinceClick = 0.0;
-            }
+            }            
         }
 
         public static void UpdateVariable()

@@ -19,34 +19,37 @@ namespace Barotrauma.Networking
         No = 0, Maybe = 1, Yes = 2
     }
 
-    partial class GameServer : NetworkMember, IPropertyObject
+    partial class GameServer : NetworkMember, ISerializableEntity
     {
         private class SavedClientPermission
         {
             public readonly string IP;
             public readonly string Name;
+            public List<DebugConsole.Command> PermittedCommands;
 
             public ClientPermissions Permissions;
 
-            public SavedClientPermission(string name, string ip, ClientPermissions permissions)
+            public SavedClientPermission(string name, string ip, ClientPermissions permissions, List<DebugConsole.Command> permittedCommands)
             {
                 this.Name = name;
                 this.IP = ip;
 
                 this.Permissions = permissions;
+                this.PermittedCommands = permittedCommands;
             }
         }
 
         public const string SettingsFile = "serversettings.xml";
-        public static readonly string ClientPermissionsFile = "Data" + Path.DirectorySeparatorChar + "clientpermissions.txt";
+        public static readonly string PermissionPresetFile = "Data" + Path.DirectorySeparatorChar + "permissionpresets.xml";
+        public static readonly string ClientPermissionsFile = "Data" + Path.DirectorySeparatorChar + "clientpermissions.xml";
 
-        public Dictionary<string, ObjectProperty> ObjectProperties
+        public Dictionary<string, SerializableProperty> SerializableProperties
         {
             get;
             private set;
         }
-        
-        public Dictionary<string, int> extraCargo;
+
+        public Dictionary<ItemPrefab, int> extraCargo;
 
         public bool ShowNetStats;
 
@@ -54,7 +57,7 @@ namespace Barotrauma.Networking
         private TimeSpan sparseUpdateInterval = new TimeSpan(0, 0, 0, 3);
 
         private SelectionMode subSelectionMode, modeSelectionMode;
-        
+
         private bool registeredToMaster;
 
         private WhiteList whitelist;
@@ -62,22 +65,8 @@ namespace Barotrauma.Networking
 
         private string password;
 
-        private string adminAuthPass = "";
-        public string AdminAuthPass
-        {
-            set
-            {
-                DebugConsole.NewMessage("Admin auth pass changed!",Color.Yellow);
-                adminAuthPass = "";
-                if (value.Length > 0)
-                {
-                    adminAuthPass = Encoding.UTF8.GetString(Lidgren.Network.NetUtility.ComputeSHAHash(Encoding.UTF8.GetBytes(value)));
-                }
-            }
-        }
-
         public float AutoRestartTimer;
-        
+
         private bool autoRestart;
 
         private bool isPublic;
@@ -85,30 +74,29 @@ namespace Barotrauma.Networking
         private int maxPlayers;
 
         private List<SavedClientPermission> clientPermissions = new List<SavedClientPermission>();
-        
-        [HasDefaultValue(true, true)]
+
+        [Serialize(true, true)]
         public bool RandomizeSeed
         {
             get;
-            private set;
+            set;
         }
 
-
-        [HasDefaultValue(300.0f, true)]
+        [Serialize(300.0f, true)]
         public float RespawnInterval
         {
             get;
             private set;
         }
 
-        [HasDefaultValue(180.0f, true)]
+        [Serialize(180.0f, true)]
         public float MaxTransportTime
         {
             get;
             private set;
         }
 
-        [HasDefaultValue(0.2f, true)]
+        [Serialize(0.2f, true)]
         public float MinRespawnRatio
         {
             get;
@@ -116,42 +104,49 @@ namespace Barotrauma.Networking
         }
 
 
-        [HasDefaultValue(60.0f, true)]
+        [Serialize(60.0f, true)]
         public float AutoRestartInterval
         {
             get;
             set;
         }
 
-        [HasDefaultValue(true, true)]
+        [Serialize(true, true)]
         public bool AllowSpectating
         {
             get;
             private set;
         }
 
-        [HasDefaultValue(true, true)]
+        [Serialize(true, true)]
         public bool EndRoundAtLevelEnd
         {
             get;
             private set;
         }
 
-        [HasDefaultValue(true, true)]
+        [Serialize(true, true)]
         public bool SaveServerLogs
         {
             get;
             private set;
         }
 
-        [HasDefaultValue(true, true)]
+        [Serialize(true, true)]
+        public bool AllowRagdollButton
+        {
+            get;
+            private set;
+        }
+
+        [Serialize(true, true)]
         public bool AllowFileTransfers
         {
             get;
             private set;
         }
 
-        [HasDefaultValue(800, true)]
+        [Serialize(800, true)]
         private int LinesPerLogFile
         {
             get
@@ -174,8 +169,8 @@ namespace Barotrauma.Networking
                 AutoRestartTimer = autoRestart ? AutoRestartInterval : 0.0f;
             }
         }
-        
-        [HasDefaultValue(true, true)]
+
+        [Serialize(true, true)]
         public bool AllowRespawn
         {
             get;
@@ -197,28 +192,77 @@ namespace Barotrauma.Networking
         {
             get { return modeSelectionMode; }
         }
-        
+
         public BanList BanList
         {
             get { return banList; }
         }
 
-        [HasDefaultValue(true, true)]
+        [Serialize(true, true)]
         public bool AllowVoteKick
         {
             get;
             private set;
         }
 
-        [HasDefaultValue(0.6f, true)]
+        [Serialize(0.6f, true)]
         public float EndVoteRequiredRatio
         {
             get;
             private set;
         }
 
-        [HasDefaultValue(0.6f, true)]
+        [Serialize(0.6f, true)]
         public float KickVoteRequiredRatio
+        {
+            get;
+            private set;
+        }
+
+        [Serialize(true, true)]
+        public bool TraitorUseRatio
+        {
+            get;
+            private set;
+        }
+
+        [Serialize(0.2f, true)]
+        public float TraitorRatio
+        {
+            get;
+            private set;
+        }
+
+        [Serialize(false, true)]
+        public bool KarmaEnabled
+        {
+            get;
+            set;
+        }
+
+        [Serialize("Sandbox", true)]
+        public string GameMode
+        {
+            get;
+            set;
+        }
+
+        [Serialize("Random", true)]
+        public string MissionType
+        {
+            get;
+            set;
+        }
+
+        [Serialize(60f, true)]
+        public float AutoBanTime
+        {
+            get;
+            private set;
+        }
+
+        [Serialize(360f, true)]
+        public float MaxAutoBanTime
         {
             get;
             private set;
@@ -228,8 +272,8 @@ namespace Barotrauma.Networking
         {
             XDocument doc = new XDocument(new XElement("serversettings"));
 
-            ObjectProperty.SaveProperties(this, doc.Root, true);
-            
+            SerializableProperty.SerializeProperties(this, doc.Root, true);
+
             doc.Root.SetAttributeValue("name", name);
             doc.Root.SetAttributeValue("public", isPublic);
             doc.Root.SetAttributeValue("port", config.Port);
@@ -240,7 +284,7 @@ namespace Barotrauma.Networking
 
             doc.Root.SetAttributeValue("SubSelection", subSelectionMode.ToString());
             doc.Root.SetAttributeValue("ModeSelection", modeSelectionMode.ToString());
-            
+
             doc.Root.SetAttributeValue("TraitorsEnabled", TraitorsEnabled.ToString());
 
 #if SERVER
@@ -255,7 +299,7 @@ namespace Barotrauma.Networking
             {
                 doc.Root.SetAttributeValue("ServerMessage", GameMain.NetLobbyScreen.ServerMessageText);
             }
-                
+
             XmlWriterSettings settings = new XmlWriterSettings();
             settings.Indent = true;
             settings.NewLineOnAttributes = true;
@@ -272,14 +316,14 @@ namespace Barotrauma.Networking
             if (File.Exists(SettingsFile))
             {
                 doc = XMLExtensions.TryLoadXml(SettingsFile);
-            }           
+            }
 
             if (doc == null || doc.Root == null)
             {
                 doc = new XDocument(new XElement("serversettings"));
             }
 
-            ObjectProperties = ObjectProperty.InitProperties(this, doc.Root);
+            SerializableProperties = SerializableProperty.DeserializeProperties(this, doc.Root);
 
             AutoRestart = doc.Root.GetAttributeBool("autorestart", false);
 #if CLIENT
@@ -301,13 +345,18 @@ namespace Barotrauma.Networking
             Enum.TryParse<YesNoMaybe>(doc.Root.GetAttributeString("TraitorsEnabled", "No"), out traitorsEnabled);
             TraitorsEnabled = traitorsEnabled;
             GameMain.NetLobbyScreen.SetTraitorsEnabled(traitorsEnabled);
-            
+
             if (GameMain.NetLobbyScreen != null
 #if CLIENT
                 && GameMain.NetLobbyScreen.ServerMessage != null
 #endif
                 )
             {
+#if SERVER
+                GameMain.NetLobbyScreen.ServerName = doc.Root.GetAttributeString("name", "");
+                GameMain.NetLobbyScreen.SelectedModeName = GameMode;
+                GameMain.NetLobbyScreen.MissionTypeName = MissionType;
+#endif
                 GameMain.NetLobbyScreen.ServerMessageText = doc.Root.GetAttributeString("ServerMessage", "");
             }
 
@@ -315,27 +364,88 @@ namespace Barotrauma.Networking
             showLogButton.Visible = SaveServerLogs;
 #endif
 
-            List<string> monsterNames = Directory.GetDirectories("Content/Characters").ToList();
+            List<string> monsterNames = GameMain.Config.SelectedContentPackage.GetFilesOfType(ContentType.Character);
             for (int i = 0; i < monsterNames.Count; i++)
             {
-                monsterNames[i] = monsterNames[i].Replace("Content/Characters", "").Replace("/", "").Replace("\\", "");
+                monsterNames[i] = Path.GetFileName(Path.GetDirectoryName(monsterNames[i]));
             }
             monsterEnabled = new Dictionary<string, bool>();
             foreach (string s in monsterNames)
             {
-                monsterEnabled.Add(s, true);
+                if (!monsterEnabled.ContainsKey(s)) monsterEnabled.Add(s, true);
             }
-            extraCargo = new Dictionary<string, int>();
+            extraCargo = new Dictionary<ItemPrefab, int>();
+
+            AutoBanTime = doc.Root.GetAttributeFloat("autobantime", 60);
+            MaxAutoBanTime = doc.Root.GetAttributeFloat("maxautobantime", 360);
         }
 
         public void LoadClientPermissions()
         {
-            if (!File.Exists(ClientPermissionsFile)) return;
-            
+            clientPermissions.Clear();
+
+            if (!File.Exists(ClientPermissionsFile))
+            {
+                if (File.Exists("Data/clientpermissions.txt"))
+                {
+                    LoadClientPermissionsOld("Data/clientpermissions.txt");
+                }
+                return;
+            }
+
+            XDocument doc = XMLExtensions.TryLoadXml(ClientPermissionsFile);
+            foreach (XElement clientElement in doc.Root.Elements())
+            {
+                string clientName = clientElement.GetAttributeString("name", "");
+                string clientIP = clientElement.GetAttributeString("ip", "");
+                if (string.IsNullOrWhiteSpace(clientName) || string.IsNullOrWhiteSpace(clientIP))
+                {
+                    DebugConsole.ThrowError("Error in " + ClientPermissionsFile + " - all clients must have a name and an IP address.");
+                    continue;
+                }
+
+                string permissionsStr = clientElement.GetAttributeString("permissions", "");
+                ClientPermissions permissions;
+                if (!Enum.TryParse(permissionsStr, out permissions))
+                {
+                    DebugConsole.ThrowError("Error in " + ClientPermissionsFile + " - \"" + permissionsStr + "\" is not a valid client permission.");
+                    continue;
+                }
+
+                List<DebugConsole.Command> permittedCommands = new List<DebugConsole.Command>();
+                if (permissions.HasFlag(ClientPermissions.ConsoleCommands))
+                {
+                    foreach (XElement commandElement in clientElement.Elements())
+                    {
+                        if (commandElement.Name.ToString().ToLowerInvariant() != "command") continue;
+
+                        string commandName = commandElement.GetAttributeString("name", "");
+                        DebugConsole.Command command = DebugConsole.FindCommand(commandName);
+                        if (command == null)
+                        {
+                            DebugConsole.ThrowError("Error in " + ClientPermissionsFile + " - \"" + commandName + "\" is not a valid console command.");
+                            continue;
+                        }
+
+                        permittedCommands.Add(command);
+                    }
+                }
+
+                clientPermissions.Add(new SavedClientPermission(clientName, clientIP, permissions, permittedCommands));
+            }
+        }
+
+        /// <summary>
+        /// Method for loading old .txt client permission files to provide backwards compatibility
+        /// </summary>
+        private void LoadClientPermissionsOld(string file)
+        {
+            if (!File.Exists(file)) return;
+
             string[] lines;
             try
             {
-                lines = File.ReadAllLines(ClientPermissionsFile);
+                lines = File.ReadAllLines(file);
             }
             catch (Exception e)
             {
@@ -344,36 +454,63 @@ namespace Barotrauma.Networking
             }
 
             clientPermissions.Clear();
+
             foreach (string line in lines)
             {
                 string[] separatedLine = line.Split('|');
                 if (separatedLine.Length < 3) continue;
 
-                string name = String.Join("|", separatedLine.Take(separatedLine.Length - 2));
+                string name = string.Join("|", separatedLine.Take(separatedLine.Length - 2));
                 string ip = separatedLine[separatedLine.Length - 2];
 
                 ClientPermissions permissions = ClientPermissions.None;
-                if (Enum.TryParse<ClientPermissions>(separatedLine.Last(), out permissions))
+                if (Enum.TryParse(separatedLine.Last(), out permissions))
                 {
-                    clientPermissions.Add(new SavedClientPermission(name, ip, permissions));
+                    clientPermissions.Add(new SavedClientPermission(name, ip, permissions, new List<DebugConsole.Command>()));
                 }
             }            
         }
         
         public void SaveClientPermissions()
         {
-            GameServer.Log("Saving client permissions", ServerLog.MessageType.ServerMessage);
+            //delete old client permission file
+            if (File.Exists("Data/clientpermissions.txt"))
+            {
+                File.Delete("Data/clientpermissions.txt");
+            }
 
-            List<string> lines = new List<string>();
+            Log("Saving client permissions", ServerLog.MessageType.ServerMessage);
+
+            XDocument doc = new XDocument(new XElement("ClientPermissions"));
 
             foreach (SavedClientPermission clientPermission in clientPermissions)
             {
-                lines.Add(clientPermission.Name + "|" + clientPermission.IP+"|"+clientPermission.Permissions.ToString());
+                XElement clientElement = new XElement("Client", 
+                    new XAttribute("name", clientPermission.Name),
+                    new XAttribute("ip", clientPermission.IP),
+                    new XAttribute("permissions", clientPermission.Permissions.ToString()));
+
+                if (clientPermission.Permissions.HasFlag(ClientPermissions.ConsoleCommands))
+                {
+                    foreach (DebugConsole.Command command in clientPermission.PermittedCommands)
+                    {
+                        clientElement.Add(new XElement("command", new XAttribute("name", command.names[0])));
+                    }
+                }
+
+                doc.Root.Add(clientElement);
             }
 
             try
             {
-                File.WriteAllLines(ClientPermissionsFile, lines);
+                XmlWriterSettings settings = new XmlWriterSettings();
+                settings.Indent = true;
+                settings.NewLineOnAttributes = true;
+
+                using (var writer = XmlWriter.Create(ClientPermissionsFile, settings))
+                {
+                    doc.Save(writer);
+                }
             }
             catch (Exception e)
             {

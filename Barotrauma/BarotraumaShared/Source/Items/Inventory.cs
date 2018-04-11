@@ -46,9 +46,22 @@ namespace Barotrauma
             }
             return -1;
         }
+        
+        /// Returns true if the item owns any of the parent inventories
+        public virtual bool ItemOwnsSelf(Item item)
+        {
+            if (Owner == null) return false;
+            if (!(Owner is Item)) return false;
+            Item ownerItem = Owner as Item;
+            if (ownerItem == item) return true;
+            if (ownerItem.ParentInventory == null) return false;
+            return ownerItem.ParentInventory.ItemOwnsSelf(item);
+        }
 
         public virtual int FindAllowedSlot(Item item)
         {
+            if (ItemOwnsSelf(item)) return -1;
+
             for (int i = 0; i < capacity; i++)
             {
                 //item is already in the inventory!
@@ -65,6 +78,7 @@ namespace Barotrauma
 
         public virtual bool CanBePut(Item item, int i)
         {
+            if (ItemOwnsSelf(item)) return false;
             if (i < 0 || i >= Items.Length) return false;
             return (Items[i] == null);            
         }
@@ -81,7 +95,7 @@ namespace Barotrauma
             return true;
         }
 
-        public virtual bool TryPutItem(Item item, int i, bool allowSwapping, Character user, bool createNetworkEvent = true)
+        public virtual bool TryPutItem(Item item, int i, bool allowSwapping, bool allowCombine, Character user, bool createNetworkEvent = true)
         {
             if (Owner == null) return false;
             if (CanBePut(item, i))
@@ -143,8 +157,19 @@ namespace Barotrauma
         public Item FindItem(string itemName)
         {
             if (itemName == null) return null;
+            return Items.FirstOrDefault(i => i != null && (i.Prefab.NameMatches(itemName) || i.HasTag(itemName)));
+        }
 
-            return Items.FirstOrDefault(i => i != null && (i.Name == itemName || i.HasTag(itemName)));
+        public Item FindItem(string[] itemNames)
+        {
+            if (itemNames == null) return null;
+
+            foreach (string itemName in itemNames)
+            {
+                var item = FindItem(itemName);
+                if (item != null) return item;
+            }
+            return null;
         }
 
         public virtual void RemoveItem(Item item)
@@ -199,7 +224,7 @@ namespace Barotrauma
                     {
                         if (!item.CanClientAccess(c)) continue;
                     }
-                    TryPutItem(item, i, true, c.Character, false);
+                    TryPutItem(item, i, true, true, c.Character, false);
                 }
             }
 
@@ -212,11 +237,11 @@ namespace Barotrauma
                 {
                     if (Owner == c.Character)
                     {
-                        GameServer.Log(c.Character + " picked up " + item.Name, ServerLog.MessageType.Inventory);
+                        GameServer.Log(c.Character.LogName+ " picked up " + item.Name, ServerLog.MessageType.Inventory);
                     }
                     else
                     {
-                        GameServer.Log(c.Character + " placed " + item.Name + " in " + Owner, ServerLog.MessageType.Inventory);
+                        GameServer.Log(c.Character.LogName + " placed " + item.Name + " in " + Owner, ServerLog.MessageType.Inventory);
                     }
                 }
             }
@@ -227,11 +252,11 @@ namespace Barotrauma
                 {
                     if (Owner == c.Character)
                     {
-                        GameServer.Log(c.Character + " dropped " + item.Name, ServerLog.MessageType.Inventory);
+                        GameServer.Log(c.Character.LogName + " dropped " + item.Name, ServerLog.MessageType.Inventory);
                     }
                     else
                     {
-                        GameServer.Log(c.Character + " removed " + item.Name + " from " + Owner, ServerLog.MessageType.Inventory);
+                        GameServer.Log(c.Character.LogName + " removed " + item.Name + " from " + Owner, ServerLog.MessageType.Inventory);
                     }
                 }
             }
@@ -296,7 +321,7 @@ namespace Barotrauma
                     var item = Entity.FindEntityByID(receivedItemIDs[i]) as Item;
                     if (item == null) continue;
 
-                    TryPutItem(item, i, true, null, false);
+                    TryPutItem(item, i, true, true, null, false);
                 }
             }
 

@@ -28,8 +28,13 @@ namespace Barotrauma
         {
             string itemName = element.GetAttributeString("itemname", "");
 
-            itemPrefab = ItemPrefab.list.Find(ip => ip.Name == itemName) as ItemPrefab;
-            
+            itemPrefab = MapEntityPrefab.Find(itemName) as ItemPrefab;
+            if (itemPrefab == null)
+            {
+                DebugConsole.ThrowError("Error in SalvageMission: couldn't find an item prefab with the name " + itemName);
+                return;
+            }
+
             string spawnPositionTypeStr = element.GetAttributeString("spawntype", "");
 
             if (string.IsNullOrWhiteSpace(spawnPositionTypeStr) ||
@@ -37,16 +42,13 @@ namespace Barotrauma
             {
                 spawnPositionType = Level.PositionType.Cave | Level.PositionType.Ruin;
             }
-
-            if (itemPrefab == null)
-            {
-                DebugConsole.ThrowError("Error in SalvageMission: couldn't find an item prefab with the name "+itemName);
-            }
         }
 
         public override void Start(Level level)
         {
-            Vector2 position = Level.Loaded.GetRandomItemPos(spawnPositionType, 100.0f, 30.0f);
+            //ruin items are allowed to spawn close to the sub
+            float minDistance = spawnPositionType == Level.PositionType.Ruin ? 0.0f : Level.Loaded.Size.X * 0.3f;
+            Vector2 position = Level.Loaded.GetRandomItemPos(spawnPositionType, 100.0f, minDistance, 30.0f);
             
             item = new Item(itemPrefab, position, null);
             item.MoveWithLevel = true;

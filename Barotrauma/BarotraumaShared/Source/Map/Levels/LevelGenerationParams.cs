@@ -44,7 +44,7 @@ namespace Barotrauma
         }
     }
 
-    class LevelGenerationParams : IPropertyObject
+    class LevelGenerationParams : ISerializableEntity
     {
         private static List<LevelGenerationParams> levelParams;
         private static List<Biome> biomes;
@@ -102,27 +102,27 @@ namespace Barotrauma
             set;
         }
 
-        [HasDefaultValue(1000, false)]
+        [Serialize(1000, false)]
         public int BackgroundSpriteAmount
         {
             get;
             set;
         }
 
-        public Dictionary<string, ObjectProperty> ObjectProperties
+        public Dictionary<string, SerializableProperty> SerializableProperties
         {
             get;
             set;
         }
 
-        [HasDefaultValue(100000.0f, false)]
+        [Serialize(100000.0f, false)]
         public float Width
         {
             get { return width; }
             set { width = Math.Max(value, 2000.0f); }
         }
 
-        [HasDefaultValue(50000.0f, false)]
+        [Serialize(50000.0f, false)]
         public float Height
         {
             get { return height; }
@@ -160,7 +160,7 @@ namespace Barotrauma
             }
         }
 
-        [HasDefaultValue(5, false)]
+        [Serialize(5, false)]
         public int SmallTunnelCount
         {
             get { return smallTunnelCount; }
@@ -177,21 +177,21 @@ namespace Barotrauma
             }
         }
 
-        [HasDefaultValue(-300000.0f, false)]
+        [Serialize(-300000.0f, false)]
         public float SeaFloorDepth
         {
             get { return seaFloorBaseDepth; }
             set { seaFloorBaseDepth = MathHelper.Clamp(value, Level.MaxEntityDepth, 0.0f); }
         }
 
-        [HasDefaultValue(1000.0f, false)]
+        [Serialize(1000.0f, false)]
         public float SeaFloorVariance
         {
             get { return seaFloorVariance; }
             set { seaFloorVariance = value; }
         }
 
-        [HasDefaultValue(0, false)]
+        [Serialize(0, false)]
         public int MountainCountMin
         {
             get { return mountainCountMin; }
@@ -201,7 +201,7 @@ namespace Barotrauma
             }
         }
 
-        [HasDefaultValue(0, false)]
+        [Serialize(0, false)]
         public int MountainCountMax
         {
             get { return mountainCountMax; }
@@ -211,7 +211,7 @@ namespace Barotrauma
             }
         }
 
-        [HasDefaultValue(1000.0f, false)]
+        [Serialize(1000.0f, false)]
         public float MountainHeightMin
         {
             get { return mountainHeightMin; }
@@ -221,7 +221,7 @@ namespace Barotrauma
             }
         }
 
-        [HasDefaultValue(5000.0f, false)]
+        [Serialize(5000.0f, false)]
         public float MountainHeightMax
         {
             get { return mountainHeightMax; }
@@ -231,14 +231,14 @@ namespace Barotrauma
             }
         }
 
-        [HasDefaultValue(1, false)]
+        [Serialize(1, false)]
         public int RuinCount
         {
             get { return ruinCount; }
             set { ruinCount = MathHelper.Clamp(value, 0, 10); }
         }
 
-        [HasDefaultValue(0.4f, false)]
+        [Serialize(0.4f, false)]
         public float BottomHoleProbability
         {
             get { return bottomHoleProbability; }
@@ -278,7 +278,7 @@ namespace Barotrauma
         private LevelGenerationParams(XElement element)
         {
             Name = element == null ? "default" : element.Name.ToString();
-            ObjectProperties = ObjectProperty.InitProperties(this, element);
+            SerializableProperties = SerializableProperty.DeserializeProperties(this, element);
 
             Vector3 colorVector = element.GetAttributeVector3("BackgroundColor", new Vector3(50, 46, 20));
             BackgroundColor = new Color((int)colorVector.X, (int)colorVector.Y, (int)colorVector.Z);

@@ -12,6 +12,9 @@ namespace Barotrauma
 
         public List<SkillPrefab> Skills;
 
+        //the number of these characters in the crew the player starts with
+        public readonly int InitialCount;
+
         public string Name
         {
             get;
@@ -47,6 +50,12 @@ namespace Barotrauma
             private set;
         }
 
+        public float MinKarma
+        {
+            get;
+            private set;
+        }
+
         public float Commonness
         {
             get;
@@ -61,6 +70,9 @@ namespace Barotrauma
 
             MinNumber = element.GetAttributeInt("minnumber", 0);
             MaxNumber = element.GetAttributeInt("maxnumber", 10);
+            MinKarma = element.GetAttributeFloat("minkarma", 0.0f);
+
+            InitialCount = element.GetAttributeInt("initialcount", 0);
 
             Commonness = element.GetAttributeInt("commonness", 10);
 

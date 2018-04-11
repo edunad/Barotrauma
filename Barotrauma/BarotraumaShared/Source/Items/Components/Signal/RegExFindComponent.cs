@@ -16,14 +16,14 @@ namespace Barotrauma.Items.Components
 
         private Regex regex;
 
-        [InGameEditable, HasDefaultValue("1", true)]
+        [InGameEditable, Serialize("1", true)]
         public string Output
         {
             get { return output; }
             set { output = value; }
         }
 
-        [InGameEditable, HasDefaultValue("", true)]
+        [InGameEditable, Serialize("", true)]
         public string Expression
         {
             get { return expression; }
@@ -54,9 +54,9 @@ namespace Barotrauma.Items.Components
 
         public override void Update(float deltaTime, Camera cam)
         {
-            if (string.IsNullOrWhiteSpace(expression) || regex==null) return;
+            if (string.IsNullOrWhiteSpace(expression) || regex == null) return;
 
-            if (receivedSignal != previousReceivedSignal)
+            if (receivedSignal != previousReceivedSignal && receivedSignal != null)
             {
                 try
                 {

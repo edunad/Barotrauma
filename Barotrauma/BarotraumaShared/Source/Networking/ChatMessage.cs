@@ -7,7 +7,7 @@ namespace Barotrauma.Networking
 {
     enum ChatMessageType
     {
-        Default, Error, Dead, Server, Radio, Private, MessageBox
+        Default, Error, Dead, Server, Radio, Private, Console, MessageBox
     }
 
     partial class ChatMessage
@@ -25,7 +25,8 @@ namespace Barotrauma.Networking
             new Color(63, 72, 204),     //dead
             new Color(157, 225, 160),   //server
             new Color(238, 208, 0),     //radio
-            new Color(228, 199, 27)     //private
+            new Color(64, 240, 89),     //private
+            new Color(255, 255, 255)    //console
         };
         
         public readonly string Text;
@@ -105,18 +106,18 @@ namespace Barotrauma.Networking
             return ApplyDistanceEffect(listener, Sender, Text, SpeakRange);
         }
 
-        public static string ApplyDistanceEffect(Entity listener, Entity Sender, string text, float range)
+        public static string ApplyDistanceEffect(Entity listener, Entity Sender, string text, float range, float obstructionmult = 2.0f)
         {
             if (listener.WorldPosition == Sender.WorldPosition) return text;
 
             float dist = Vector2.Distance(listener.WorldPosition, Sender.WorldPosition);
             if (dist > range) return "";
 
-            if (Submarine.CheckVisibility(listener.SimPosition, Sender.SimPosition) != null) dist *= 2.0f;
+            if (Submarine.CheckVisibility(listener.SimPosition, Sender.SimPosition) != null) dist = (dist + 100f) * obstructionmult;
             if (dist > range) return "";
 
             float garbleAmount = dist / range;
-            if (garbleAmount < 0.5f) return text;
+            if (garbleAmount < 0.3f) return text;
 
             int startIndex = Math.Max(text.IndexOf(':') + 1, 1);
 
@@ -135,26 +136,26 @@ namespace Barotrauma.Networking
             string txt = msg.ReadString();
             if (txt == null) txt = "";
 
-            if (!NetIdUtils.IdMoreRecent(ID, c.lastSentChatMsgID)) return;
+            if (!NetIdUtils.IdMoreRecent(ID, c.LastSentChatMsgID)) return;
 
-            c.lastSentChatMsgID = ID;
+            c.LastSentChatMsgID = ID;
 
             if (txt.Length > MaxLength)
             {
                 txt = txt.Substring(0, MaxLength);
             }
 
-            c.lastSentChatMessages.Add(txt);
-            if (c.lastSentChatMessages.Count > 10)
+            c.LastSentChatMessages.Add(txt);
+            if (c.LastSentChatMessages.Count > 10)
             {
-                c.lastSentChatMessages.RemoveRange(0, c.lastSentChatMessages.Count-10);
+                c.LastSentChatMessages.RemoveRange(0, c.LastSentChatMessages.Count-10);
             }
             
             float similarity = 0.0f;
-            for (int i = 0; i < c.lastSentChatMessages.Count; i++)
+            for (int i = 0; i < c.LastSentChatMessages.Count; i++)
             {
-                float closeFactor = 1.0f / (c.lastSentChatMessages.Count - i);
-                int levenshteinDist = ToolBox.LevenshteinDistance(txt, c.lastSentChatMessages[i]);
+                float closeFactor = 1.0f / (c.LastSentChatMessages.Count - i);
+                int levenshteinDist = ToolBox.LevenshteinDistance(txt, c.LastSentChatMessages[i]);
                 similarity += Math.Max((txt.Length - levenshteinDist) / (float)txt.Length * closeFactor, 0.0f);
             }
 
@@ -165,11 +166,11 @@ namespace Barotrauma.Networking
                 if (c.ChatSpamCount > 3)
                 {
                     //kick for spamming too much
-                    GameMain.Server.KickClient(c, "You have been kicked by the spam filter.");
+                    GameMain.Server.KickClient(c, TextManager.Get("SpamFilterKicked"));
                 }
                 else
                 {
-                    ChatMessage denyMsg = ChatMessage.Create("", "You have been blocked by the spam filter. Try again after 10 seconds.", ChatMessageType.Server, null);
+                    ChatMessage denyMsg = Create("", TextManager.Get("SpamFilterBlocked"), ChatMessageType.Server, null);
                     c.ChatSpamTimer = 10.0f;
                     GameMain.Server.SendChatMessage(denyMsg, c);
                 }
@@ -180,12 +181,15 @@ namespace Barotrauma.Networking
 
             if (c.ChatSpamTimer > 0.0f)
             {
-                ChatMessage denyMsg = ChatMessage.Create("", "You have been blocked by the spam filter. Try again after 10 seconds.", ChatMessageType.Server, null);
+                ChatMessage denyMsg = Create("", TextManager.Get("SpamFilterBlocked"), ChatMessageType.Server, null);
                 c.ChatSpamTimer = 10.0f;
                 GameMain.Server.SendChatMessage(denyMsg, c);
                 return;
             }
 
+            //dead characters are allowed to send chat messages, 
+            //we'll just switch the message type to dead chat in SendChatMessage
+            if (c.Character != null && (!c.Character.CanSpeak && !c.Character.IsDead)) return;
             GameMain.Server.SendChatMessage(txt, null, c);
         }
 
@@ -205,7 +209,7 @@ namespace Barotrauma.Networking
                             1 + //(byte)Type
                             Encoding.UTF8.GetBytes(Text).Length + 2;
 
-            if (Sender != null && c.inGame)
+            if (Sender != null && c.InGame)
             {
                 length += 2; //sender ID (UInt16)
             }
@@ -224,14 +228,11 @@ namespace Barotrauma.Networking
             msg.Write((byte)Type);
             msg.Write(Text);
 
-            msg.Write(Sender != null && c.inGame);
-            if (Sender != null && c.inGame)
+            msg.Write(SenderName);
+            msg.Write(Sender != null && c.InGame);
+            if (Sender != null && c.InGame)
             {
                 msg.Write(Sender.ID);
-            }
-            else
-            {
-                msg.Write(SenderName);
             }
         }
 

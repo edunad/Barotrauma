@@ -14,19 +14,18 @@ namespace Barotrauma
 
         public override string ToString()
         {
-            return "ScriptedEvent (" + (itemPrefab==null ? "null" : itemPrefab.Name) + ")";
+            return "ScriptedEvent (" + (itemPrefab == null ? "null" : itemPrefab.Name) + ")";
         }
-        
+
         public ArtifactEvent(XElement element)
             : base(element)
         {
             string itemName = element.GetAttributeString("itemname", "");
-
-            itemPrefab = ItemPrefab.list.Find(ip => ip.Name == itemName) as ItemPrefab;
+            itemPrefab = MapEntityPrefab.Find(itemName) as ItemPrefab;
 
             if (itemPrefab == null)
             {
-                DebugConsole.ThrowError("Error in SalvageMission: couldn't find an item prefab with the name "+itemName);
+                DebugConsole.ThrowError("Error in SalvageMission: couldn't find an item prefab with the name " + itemName);
             }
         }
 
@@ -35,7 +34,7 @@ namespace Barotrauma
             base.Init();
 
             Vector2 position = Level.Loaded.GetRandomItemPos(
-                Level.PositionType.Cave | Level.PositionType.MainPath | Level.PositionType.Ruin, 500.0f, 30.0f);
+                Level.PositionType.Cave | Level.PositionType.MainPath | Level.PositionType.Ruin, 500.0f, 10000.0f, 30.0f);
 
             item = new Item(itemPrefab, position, null);
             item.MoveWithLevel = true;

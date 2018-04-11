@@ -32,21 +32,22 @@ namespace Barotrauma.Items.Components
             private set;
         }
 
-        [Editable, HasDefaultValue(10.0f, true)]
+        [Editable(ToolTip = "Maximum output of the device when fully charged (kW)."), Serialize(10.0f, true)]
         public float MaxOutPut
         {
             set { maxOutput = value; }
             get { return maxOutput; }
         }
 
-        [HasDefaultValue(10.0f, true), Editable]
+        [Serialize(10.0f, true), Editable(ToolTip = "The maximum capacity of the device (kW * min). "+
+            "For example, a value of 1000 means the device can output 100 kilowatts of power for 10 minutes, or 1000 kilowatts for 1 minute.")]
         public float Capacity
         {
             get { return capacity; }
             set { capacity = Math.Max(value, 1.0f); }
         }
 
-        [Editable, HasDefaultValue(0.0f, true)]
+        [Editable, Serialize(0.0f, true)]
         public float Charge
         {
             get { return charge; }
@@ -63,7 +64,7 @@ namespace Barotrauma.Items.Components
             }
         }
 
-        [HasDefaultValue(10.0f, true), Editable]
+        [Serialize(10.0f, true), Editable]
         public float RechargeSpeed
         {
             get { return rechargeSpeed; }
@@ -75,7 +76,8 @@ namespace Barotrauma.Items.Components
             }
         }
 
-        [HasDefaultValue(10.0f, false), Editable]
+        [Serialize(10.0f, false), Editable(ToolTip = "How fast the device can be recharged. "+
+            "For example, a recharge speed of 100 kW and a capacity of 1000 kW*min would mean it takes 10 minutes to fully charge the device.")]
         public float MaxRechargeSpeed
         {
             get { return maxRechargeSpeed; }
@@ -184,7 +186,7 @@ namespace Barotrauma.Items.Components
 
             if (connection.Name == "power_in")
             {
-                rechargeVoltage = power;
+                rechargeVoltage = Math.Min(power, 1.0f);
             }
             else
             {
@@ -199,7 +201,7 @@ namespace Barotrauma.Items.Components
             if (item.CanClientAccess(c))
             {
                 RechargeSpeed = newRechargeSpeed;
-                GameServer.Log(c.Character + " set the recharge speed of "+item.Name+" to "+ (int)((rechargeSpeed / maxRechargeSpeed) * 100.0f) + " %", ServerLog.MessageType.ItemInteraction);
+                GameServer.Log(c.Character.LogName + " set the recharge speed of "+item.Name+" to "+ (int)((rechargeSpeed / maxRechargeSpeed) * 100.0f) + " %", ServerLog.MessageType.ItemInteraction);
             }
 
             item.CreateServerEvent(this);

@@ -10,40 +10,29 @@ namespace Barotrauma
     struct DeconstructItem
     {
         public readonly string ItemPrefabName;
-        public readonly bool RequireFullCondition;
+        public readonly float MinCondition;
+        public readonly float MaxCondition;
+        public readonly float OutCondition;
 
-        public DeconstructItem(string itemPrefabName, bool requireFullCondition)
+        public DeconstructItem(string itemPrefabName, float minCondition, float maxCondition, float outCondition)
         {
             ItemPrefabName = itemPrefabName;
-            RequireFullCondition = requireFullCondition;
+            MinCondition = minCondition;
+            MaxCondition = maxCondition;
+            OutCondition = outCondition;
         }
     }
 
     partial class ItemPrefab : MapEntityPrefab
     {
-        //static string contentFolder = "Content/Items/";
-
-        string configFile;
-
-        //should the camera focus on the construction when selected
-        protected bool focusOnSelected;
-        //the amount of "camera offset" when selecting the construction
-        protected float offsetOnSelected;
+        private readonly string configFile;
+        
         //default size
         protected Vector2 size;
-
-        //how close the Character has to be to the item to pick it up
-        private float interactDistance;
-        // this can be used to allow items which are behind other items tp
-        private float interactPriority; 
-
-        private bool interactThroughWalls;
-
+                
         //an area next to the construction
         //the construction can be Activated() by a Character inside the area
         public List<Rectangle> Triggers;
-
-        public readonly bool FireProof;
 
         private float impactTolerance;
 
@@ -60,14 +49,6 @@ namespace Barotrauma
 
         private bool canSpriteFlipX;
 
-        //if a matching itemprefab is not found when loading a sub, the game will attempt to find a prefab with a matching alias
-        //(allows changing item names while keeping backwards compatibility with older sub files)
-        public string[] Aliases
-        {
-            get;
-            private set;
-        }
-
         public List<DeconstructItem> DeconstructItems
         {
             get;
@@ -80,55 +61,97 @@ namespace Barotrauma
             private set;
         }
 
+        //how close the Character has to be to the item to pick it up
+        [Serialize(120.0f, false)]
         public float InteractDistance
         {
-            get { return interactDistance; }
+            get;
+            private set;
         }
 
+        // this can be used to allow items which are behind other items tp
+        [Serialize(0.0f, false)]
         public float InteractPriority
         {
-            get { return interactPriority; }
+            get;
+            private set;
         }
 
+        [Serialize(false, false)]
         public bool InteractThroughWalls
         {
-            get { return interactThroughWalls; }
+            get;
+            private set;
         }
 
-        public override bool IsLinkable
-        {
-            get { return isLinkable; }
-        }
 
+        //should the camera focus on the item when selected
+        [Serialize(false, false)]
         public bool FocusOnSelected
         {
-            get { return focusOnSelected; }
+            get;
+            private set;
         }
 
+        //the amount of "camera offset" when selecting the construction
+        [Serialize(0.0f, false)]
         public float OffsetOnSelected
         {
-            get { return offsetOnSelected; }
+            get;
+            private set;
         }
 
+        [Serialize(100.0f, false)]
         public float Health
         {
             get;
             private set;
         }
 
+        [Serialize(false, false)]
         public bool Indestructible
         {
             get;
             private set;
         }
 
+        [Serialize(false, false)]
+        public bool FireProof
+        {
+            get;
+            private set;
+        }
+
+        [Serialize(0.0f, false)]
         public float ImpactTolerance
         {
             get { return impactTolerance; }
             set { impactTolerance = Math.Max(value, 0.0f); }
         }
 
+        [Serialize(false, false)]
         public bool CanUseOnSelf
+        {
+            get;
+            private set;
+        }
+
+        [Serialize(false, false)]
+        public bool DisableItemUsageWhenSelected
+        {
+            get;
+            private set;
+        }
+
+        [Serialize("", false)]
+        public string CargoContainerName
+        {
+            get;
+            private set;
+        }
+
+        [Serialize(false, false)]
+        public bool UseContainedSpriteColor
         {
             get;
             private set;
@@ -154,7 +177,7 @@ namespace Barotrauma
                 return;
             }
 
-            if (!resizeHorizontal && !resizeVertical)
+            if (!ResizeHorizontal && !ResizeVertical)
             {
                 if (PlayerInput.LeftButtonClicked())
                 {
@@ -180,9 +203,9 @@ namespace Barotrauma
                 }
                 else
                 {
-                    if (resizeHorizontal)
+                    if (ResizeHorizontal)
                         placeSize.X = Math.Max(position.X - placePosition.X, size.X);
-                    if (resizeVertical)
+                    if (ResizeVertical)
                         placeSize.Y = Math.Max(placePosition.Y - position.Y, size.Y);
 
                     if (PlayerInput.LeftButtonReleased())
@@ -239,38 +262,15 @@ namespace Barotrauma
             }
         }
 
-        public ItemPrefab (XElement element, string filePath)
+        public ItemPrefab(XElement element, string filePath)
         {
             configFile = filePath;
             ConfigElement = element;
 
             name = element.GetAttributeString("name", "");
-            if (name == "") DebugConsole.ThrowError("Unnamed item in "+filePath+"!");
+            if (name == "") DebugConsole.ThrowError("Unnamed item in " + filePath + "!");
 
-            DebugConsole.Log("    "+name);
-
-            Description = element.GetAttributeString("description", "");
-
-            interactThroughWalls    = element.GetAttributeBool("interactthroughwalls", false);
-            interactDistance        = element.GetAttributeFloat("interactdistance", 120.0f); // Default to 120 as the new item picking method is tuned to this number
-            interactPriority        = element.GetAttributeFloat("interactpriority", 0.0f);
-
-            isLinkable          = element.GetAttributeBool("linkable", false);
-
-            resizeHorizontal    = element.GetAttributeBool("resizehorizontal", false);
-            resizeVertical      = element.GetAttributeBool("resizevertical", false);
-
-            focusOnSelected     = element.GetAttributeBool("focusonselected", false);
-
-            offsetOnSelected    = element.GetAttributeFloat("offsetonselected", 0.0f);
-
-            CanUseOnSelf        = element.GetAttributeBool("canuseonself", false);
-            
-
-            Health              = element.GetAttributeFloat("health", 100.0f);
-            Indestructible      = element.GetAttributeBool("indestructible", false);
-            FireProof           = element.GetAttributeBool("fireproof", false);
-            ImpactTolerance     = element.GetAttributeFloat("impacttolerance", 0.0f);
+            DebugConsole.Log("    " + name);
 
             string aliases = element.GetAttributeString("aliases", "");
             if (!string.IsNullOrWhiteSpace(aliases))
@@ -279,27 +279,20 @@ namespace Barotrauma
             }
 
             MapEntityCategory category;
-
             if (!Enum.TryParse(element.GetAttributeString("category", "Misc"), true, out category))
             {
                 category = MapEntityCategory.Misc;
             }
-
             Category = category;
             
-            
-            string spriteColorStr = element.GetAttributeString("spritecolor", "1.0,1.0,1.0,1.0");
-            SpriteColor = new Color(XMLExtensions.ParseToVector4(spriteColorStr));
-
-            price = element.GetAttributeInt("price", 0);
-            
             Triggers            = new List<Rectangle>();
-
             DeconstructItems    = new List<DeconstructItem>();
             DeconstructTime     = 1.0f;
 
-            tags = new List<string>();
-            tags.AddRange(element.GetAttributeString("tags", "").Split(','));
+            Tags = new List<string>();
+            Tags.AddRange(element.GetAttributeString("tags", "").Split(','));
+
+            SerializableProperty.DeserializeProperties(this, element);
 
             foreach (XElement subElement in element.Elements())
             {
@@ -315,18 +308,47 @@ namespace Barotrauma
                         canSpriteFlipX = subElement.GetAttributeBool("canflipx", true);
 
                         sprite = new Sprite(subElement, spriteFolder);
+                        if (subElement.Attribute("sourcerect") == null)
+                        {
+                            DebugConsole.ThrowError("Warning - sprite sourcerect not configured for item \"" + Name + "\"!");
+                        }
                         size = sprite.size;
                         break;
+#if CLIENT
+                    case "brokensprite":
+                        string brokenSpriteFolder = "";
+                        if (!subElement.GetAttributeString("texture", "").Contains("/"))
+                        {
+                            brokenSpriteFolder = Path.GetDirectoryName(filePath);
+                        }
+
+                        var brokenSprite = new BrokenItemSprite(
+                            new Sprite(subElement, brokenSpriteFolder), 
+                            subElement.GetAttributeFloat("maxcondition", 0.0f),
+                            subElement.GetAttributeBool("fadein", false));
+
+                        int spriteIndex = 0;
+                        for (int i = 0; i < BrokenSprites.Count && BrokenSprites[i].MaxCondition < brokenSprite.MaxCondition; i++)
+                        {
+                            spriteIndex = i;
+                        }
+                        BrokenSprites.Insert(spriteIndex, brokenSprite);
+                        break;
+#endif
                     case "deconstruct":
                         DeconstructTime = subElement.GetAttributeFloat("time", 10.0f);
 
                         foreach (XElement deconstructItem in subElement.Elements())
                         {
-
                             string deconstructItemName = deconstructItem.GetAttributeString("name", "not found");
-                            bool requireFullCondition = deconstructItem.GetAttributeBool("requirefullcondition", false);
+                            //minCondition does <= check, meaning that below or equeal to min condition will be skipped.
+                            float minCondition = deconstructItem.GetAttributeFloat("mincondition", -0.1f);
+                            //maxCondition does > check, meaning that above this max the deconstruct item will be skipped.
+                            float maxCondition = deconstructItem.GetAttributeFloat("maxcondition", 1.0f);
+                            //Condition of item on creation
+                            float outCondition = deconstructItem.GetAttributeFloat("outcondition", 1.0f);
 
-                            DeconstructItems.Add(new DeconstructItem(deconstructItemName, requireFullCondition));
+                            DeconstructItems.Add(new DeconstructItem(deconstructItemName, minCondition, maxCondition, outCondition));
 
                         }
 
@@ -346,7 +368,7 @@ namespace Barotrauma
                 }
             }
 
-            list.Add(this);
+            List.Add(this);
         }
     }
 }

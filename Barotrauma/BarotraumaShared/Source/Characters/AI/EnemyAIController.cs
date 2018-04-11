@@ -445,7 +445,7 @@ namespace Barotrauma
             targetEntity = closestBody.UserData as IDamageable;            
         }
 
-        public override void OnAttacked(IDamageable attacker, float amount)
+        public override void OnAttacked(Character attacker, float amount)
         {
             updateTargetsTimer = Math.Min(updateTargetsTimer, 0.1f);
             coolDownTimer *= 0.1f;
@@ -533,8 +533,7 @@ namespace Barotrauma
             }
 
             Vector2 attackSimPosition = Character.Submarine == null ? ConvertUnits.ToSimUnits(selectedAiTarget.WorldPosition) : selectedAiTarget.SimPosition;
-
-
+            
             Vector2 limbDiff = attackSimPosition - mouthPos;
             float limbDist = limbDiff.Length();
             if (limbDist < 1.0f)
@@ -577,7 +576,7 @@ namespace Barotrauma
             }
             else
             {
-                steeringManager.SteeringSeek(attackSimPosition + (mouthPos - SimPosition), 3);
+                steeringManager.SteeringSeek(attackSimPosition - (mouthPos - SimPosition), 3);
             }
         }
         

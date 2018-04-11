@@ -13,7 +13,6 @@ namespace Barotrauma.Items.Components
 
         private float pickTimer;
 
-
         public List<InvSlotType> AllowedSlots
         {
             get { return allowedSlots; }
@@ -55,13 +54,15 @@ namespace Barotrauma.Items.Components
         public override bool Pick(Character picker)
         {
             //return if someone is already trying to pick the item
-            if (pickTimer>0.0f) return false;
+            if (pickTimer > 0.0f) return false;
             if (picker == null || picker.Inventory == null) return false;
 
-            if (PickingTime>0.0f)
+            if (PickingTime > 0.0f)
             {
-                CoroutineManager.StartCoroutine(WaitForPick(picker, PickingTime));
-                
+                if (picker.PickingItem == null)
+                {
+                    CoroutineManager.StartCoroutine(WaitForPick(picker, PickingTime));
+                }
                 return false;
             }
             else
@@ -70,7 +71,7 @@ namespace Barotrauma.Items.Components
             }
         }
 
-        protected virtual bool OnPicked(Character picker)
+        public virtual bool OnPicked(Character picker)
         {
             if (picker.Inventory.TryPutItem(item, picker, allowedSlots))
             {
@@ -88,14 +89,15 @@ namespace Barotrauma.Items.Components
                 ApplyStatusEffects(ActionType.OnPicked, 1.0f, picker);
 
 #if CLIENT
-                if (!GameMain.Instance.LoadingScreenOpen) GUI.PlayUISound(GUISoundType.PickItem);
+                if (!GameMain.Instance.LoadingScreenOpen && picker == Character.Controlled) GUI.PlayUISound(GUISoundType.PickItem);
+                PlaySound(ActionType.OnPicked, item.WorldPosition);
 #endif
 
                 return true;
             }
 
 #if CLIENT
-            if (!GameMain.Instance.LoadingScreenOpen) GUI.PlayUISound(GUISoundType.PickItemFail);
+            if (!GameMain.Instance.LoadingScreenOpen && picker == Character.Controlled) GUI.PlayUISound(GUISoundType.PickItemFail);
 #endif
 
             return false;
@@ -103,11 +105,13 @@ namespace Barotrauma.Items.Components
 
         private IEnumerable<object> WaitForPick(Character picker, float requiredTime)
         {
+            picker.PickingItem = item;
+
             var leftHand = picker.AnimController.GetLimb(LimbType.LeftHand);
             var rightHand = picker.AnimController.GetLimb(LimbType.RightHand);
 
             pickTimer = 0.0f;
-            while (pickTimer < requiredTime && Screen.Selected != GameMain.EditMapScreen)
+            while (pickTimer < requiredTime && Screen.Selected != GameMain.SubEditorScreen)
             {
                 if (picker.IsKeyDown(InputType.Aim) || !picker.CanInteractWith(item))
                 {
@@ -142,7 +146,7 @@ namespace Barotrauma.Items.Components
 
             StopPicking(picker);
 
-            if (!picker.IsRemotePlayer) OnPicked(picker);
+            if (!picker.IsRemotePlayer || GameMain.Server != null) OnPicked(picker);
 
             yield return CoroutineStatus.Success;
         }
@@ -150,7 +154,8 @@ namespace Barotrauma.Items.Components
         private void StopPicking(Character picker)
         {
             picker.AnimController.Anim = AnimController.Animation.None;
-            pickTimer = 0.0f;         
+            picker.PickingItem = null;
+            pickTimer = 0.0f;
         }
 
         protected void DropConnectedWires(Character character)
@@ -203,7 +208,7 @@ namespace Barotrauma.Items.Components
 
             if (item.body != null && !item.body.Enabled)
             {
-                    item.body.ResetDynamics();
+                item.body.ResetDynamics();
                 item.SetTransform(bodyDropPos, 0.0f);
                 item.body.Enabled = true;
             }

@@ -78,6 +78,8 @@ namespace Barotrauma
 
         private static BackgroundSpriteManager backgroundSpriteManager;
 
+        private List<Vector2> bottomPositions;
+
         public Vector2 StartPosition
         {
             get { return startPosition; }
@@ -264,8 +266,8 @@ namespace Barotrauma
 
             Vector2 nodeInterval = generationParams.MainPathNodeIntervalRange;
 
-            for (float  x = startPosition.X + Rand.Range(nodeInterval.X, nodeInterval.Y, Rand.RandSync.Server);
-                        x < endPosition.X   - Rand.Range(nodeInterval.X, nodeInterval.Y, Rand.RandSync.Server);
+            for (float  x = startPosition.X + nodeInterval.X;
+                        x < endPosition.X   - nodeInterval.X;
                         x += Rand.Range(nodeInterval.X, nodeInterval.Y, Rand.RandSync.Server))
             {
                 pathNodes.Add(new Vector2(x, Rand.Range(pathBorders.Y, pathBorders.Bottom, Rand.RandSync.Server)));
@@ -275,7 +277,7 @@ namespace Barotrauma
             
             if (pathNodes.Count <= 2)
             {
-                pathNodes.Add((startPosition + endPosition) / 2);
+                pathNodes.Insert(1, borders.Center.ToVector2());
             }
 
             GenerateTunnels(pathNodes, minWidth);
@@ -668,7 +670,7 @@ namespace Barotrauma
             BottomPos = generationParams.SeaFloorDepth;
             SeaFloorTopPos = BottomPos;
             
-            List<Vector2> bottomPositions = new List<Vector2>();
+            bottomPositions = new List<Vector2>();
             bottomPositions.Add(new Vector2(0, BottomPos));
 
             int mountainCount = Rand.Range(generationParams.MountainCountMin, generationParams.MountainCountMax, Rand.RandSync.Server);
@@ -817,7 +819,7 @@ namespace Barotrauma
             //50% chance of placing the ruins at a cave
             if (Rand.Range(0.0f, 1.0f, Rand.RandSync.Server) < 0.5f)
             {
-                TryGetInterestingPosition(true, PositionType.Cave, false, out ruinPos);
+                TryGetInterestingPosition(true, PositionType.Cave, 0.0f, out ruinPos);
             }
 
             ruinPos.Y = Math.Min(ruinPos.Y, borders.Y + borders.Height - ruinSize.Y / 2);
@@ -894,7 +896,7 @@ namespace Barotrauma
             }
         }
 
-        public Vector2 GetRandomItemPos(PositionType spawnPosType, float randomSpread, float offsetFromWall = 10.0f)
+        public Vector2 GetRandomItemPos(PositionType spawnPosType, float randomSpread, float minDistFromSubs, float offsetFromWall = 10.0f)
         {
             if (!positionsOfInterest.Any()) return Size*0.5f;
 
@@ -906,7 +908,7 @@ namespace Barotrauma
             do
             {
                 Vector2 startPos;
-                Level.Loaded.TryGetInterestingPosition(true, spawnPosType, true, out startPos);
+                Loaded.TryGetInterestingPosition(true, spawnPosType, minDistFromSubs, out startPos);
 
                 startPos += Rand.Vector(Rand.Range(0.0f, randomSpread, Rand.RandSync.Server), Rand.RandSync.Server);
                 
@@ -935,7 +937,7 @@ namespace Barotrauma
 
 
 
-        public bool TryGetInterestingPosition(bool useSyncedRand, PositionType positionType, bool avoidSubs, out Vector2 position)
+        public bool TryGetInterestingPosition(bool useSyncedRand, PositionType positionType, float minDistFromSubs, out Vector2 position)
         {
             if (!positionsOfInterest.Any())
             {
@@ -945,17 +947,20 @@ namespace Barotrauma
 
             var matchingPositions = positionsOfInterest.FindAll(p => positionType.HasFlag(p.PositionType));
 
-            if (avoidSubs)
+            if (minDistFromSubs > 0.0f)
             {
                 foreach (Submarine sub in Submarine.Loaded)
                 {
-                    float minDist = Math.Max(sub.Borders.Width, sub.Borders.Height);
-                    matchingPositions.RemoveAll(p => Vector2.Distance(p.Position, sub.WorldPosition) < minDist);
+                    matchingPositions.RemoveAll(p => Vector2.DistanceSquared(p.Position, sub.WorldPosition) < minDistFromSubs * minDistFromSubs);
                 }
             }
 
             if (!matchingPositions.Any())
             {
+#if DEBUG
+                DebugConsole.ThrowError("Could not find a suitable position of interest. (PositionType: " + positionType + ", minDistFromSubs: " + minDistFromSubs + "\n" + Environment.StackTrace);
+#endif
+
                 position = positionsOfInterest[Rand.Int(positionsOfInterest.Count, (useSyncedRand ? Rand.RandSync.Server : Rand.RandSync.Unsynced))].Position;
                 return false;
             }
@@ -978,6 +983,19 @@ namespace Barotrauma
 
             renderer.Update(deltaTime);
 #endif
+        }
+
+        public Vector2 GetBottomPosition(float xPosition)
+        {
+            int index = (int)Math.Floor(xPosition / Size.X * (bottomPositions.Count - 1));
+            if (index < 0 || index >= bottomPositions.Count - 1) return new Vector2(xPosition, BottomPos);
+
+            float yPos = MathHelper.Lerp(
+                bottomPositions[index].Y,
+                bottomPositions[index + 1].Y,
+                (xPosition - bottomPositions[index].X) / (bottomPositions[index + 1].X - bottomPositions[index].X));
+
+            return new Vector2(xPosition, yPos);
         }
 
         public List<VoronoiCell> GetCells(Vector2 pos, int searchDepth = 2)

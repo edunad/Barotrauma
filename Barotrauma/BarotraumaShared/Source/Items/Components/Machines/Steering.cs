@@ -67,7 +67,8 @@ namespace Barotrauma.Items.Components
             }
         }
         
-        [Editable, HasDefaultValue(0.5f, true)]
+        [Editable(0.0f, 1.0f, ToolTip = "How full the ballast tanks should be when the submarine is not being steered upwards/downwards."
+            +" Can be used to compensate if the ballast tanks are too large/small relative to the size of the submarine."), Serialize(0.5f, true)]
         public float NeutralBallastLevel
         {
             get { return neutralBallastLevel; }
@@ -97,7 +98,6 @@ namespace Barotrauma.Items.Components
             : base(item, element)
         {
             IsActive = true;
-
             InitProjSpecific();
         }
 
@@ -127,8 +127,10 @@ namespace Barotrauma.Items.Components
                     unsentChanges = false;
                 }
             }
-     
-            if (voltage < minVoltage && powerConsumption > 0.0f) return;
+
+            currPowerConsumption = powerConsumption;
+
+            if (voltage < minVoltage && currPowerConsumption > 0.0f) return;
 
             ApplyStatusEffects(ActionType.OnActive, deltaTime, null);
 
@@ -336,7 +338,7 @@ namespace Barotrauma.Items.Components
         {
             if (connection.Name == "velocity_in")
             {
-                currVelocity = XMLExtensions.ParseToVector2(signal, false);
+                currVelocity = XMLExtensions.ParseVector2(signal, false);
             }
             else
             {

@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Barotrauma.Items.Components
 {
@@ -36,6 +37,12 @@ namespace Barotrauma.Items.Components
             }
         }
 
+        private static Sprite wireSprite;
+
+        private static Wire draggingWire;
+        private static int? selectedNodeIndex;
+        private static int? highlightedNodeIndex;
+        
         public void Draw(SpriteBatch spriteBatch, bool editing)
         {
             if (sections.Count == 0 && !IsActive)
@@ -69,7 +76,7 @@ namespace Barotrauma.Items.Components
 
             foreach (WireSection section in sections)
             {
-                section.Draw(spriteBatch, item.Color, drawOffset, depth, 0.3f);
+                section.Draw(spriteBatch, item.Submarine == null ? Color.Green : item.Color, drawOffset, depth, 0.3f);
             }
 
             if (IsActive && nodes.Count > 0 && Vector2.Distance(newNodePos, nodes[nodes.Count - 1]) > nodeDistance)
@@ -83,7 +90,7 @@ namespace Barotrauma.Items.Components
                     0.3f);
             }
 
-            if (!editing || !GameMain.EditMapScreen.WiringMode) return;
+            if (!editing || !GameMain.SubEditorScreen.WiringMode) return;
 
             for (int i = 0; i < nodes.Count; i++)
             {
@@ -91,14 +98,15 @@ namespace Barotrauma.Items.Components
                 if (item.Submarine != null) drawPos += item.Submarine.Position + item.Submarine.HiddenSubPosition;
                 drawPos.Y = -drawPos.Y;
 
+                if ((highlightedNodeIndex == i && item.IsHighlighted) || (selectedNodeIndex == i && item.IsSelected))
+                {
+                    GUI.DrawRectangle(spriteBatch, drawPos + new Vector2(-10, -10), new Vector2(20, 20), Color.Red, false, 0.0f);
+                }
+
                 if (item.IsSelected)
                 {
                     GUI.DrawRectangle(spriteBatch, drawPos + new Vector2(-5, -5), new Vector2(10, 10), item.Color, true, 0.0f);
 
-                    if (highlightedNodeIndex == i)
-                    {
-                        GUI.DrawRectangle(spriteBatch, drawPos + new Vector2(-10, -10), new Vector2(20, 20), Color.Red, false, 0.0f);
-                    }
                 }
                 else
                 {
@@ -127,7 +135,7 @@ namespace Barotrauma.Items.Components
                     if (draggingWire.connections[0] != null && draggingWire.connections[0].Item.Submarine != null) sub = draggingWire.connections[0].Item.Submarine;
                     if (draggingWire.connections[1] != null && draggingWire.connections[1].Item.Submarine != null) sub = draggingWire.connections[1].Item.Submarine;
 
-                    Vector2 nodeWorldPos = GameMain.EditMapScreen.Cam.ScreenToWorld(PlayerInput.MousePosition) - sub.HiddenSubPosition - sub.Position;// Nodes[(int)selectedNodeIndex];
+                    Vector2 nodeWorldPos = GameMain.SubEditorScreen.Cam.ScreenToWorld(PlayerInput.MousePosition) - sub.HiddenSubPosition - sub.Position;// Nodes[(int)selectedNodeIndex];
 
                     nodeWorldPos.X = MathUtils.Round(nodeWorldPos.X, Submarine.GridSize.X / 2.0f);
                     nodeWorldPos.Y = MathUtils.Round(nodeWorldPos.Y, Submarine.GridSize.Y / 2.0f);
@@ -150,7 +158,7 @@ namespace Barotrauma.Items.Components
 
                 if (selectedWire != null)
                 {
-                    Vector2 mousePos = GameMain.EditMapScreen.Cam.ScreenToWorld(PlayerInput.MousePosition);
+                    Vector2 mousePos = GameMain.SubEditorScreen.Cam.ScreenToWorld(PlayerInput.MousePosition);
                     if (selectedWire.item.Submarine != null) mousePos -= (selectedWire.item.Submarine.Position + selectedWire.item.Submarine.HiddenSubPosition);
 
                     //left click while holding ctrl -> check if the cursor is on a wire section, 
@@ -196,27 +204,35 @@ namespace Barotrauma.Items.Components
 
             //check which wire is highlighted with the cursor
             Wire highlighted = null;
-            float closestDist = 0.0f;
+            float closestDist = float.PositiveInfinity;
             foreach (Wire w in wires)
             {
-                Vector2 mousePos = GameMain.EditMapScreen.Cam.ScreenToWorld(PlayerInput.MousePosition);
+                Vector2 mousePos = GameMain.SubEditorScreen.Cam.ScreenToWorld(PlayerInput.MousePosition);
                 if (w.item.Submarine != null) mousePos -= (w.item.Submarine.Position + w.item.Submarine.HiddenSubPosition);
 
                 float dist = 0.0f;
-                if (w.GetClosestNodeIndex(mousePos, highlighted == null ? nodeSelectDist : closestDist, out dist) > -1)
+                int highlightedNode = w.GetClosestNodeIndex(mousePos, highlighted == null ? nodeSelectDist : closestDist, out dist);
+                if (highlightedNode > -1)
                 {
-                    highlighted = w;
-                    closestDist = dist;
+                    if (dist < closestDist)
+                    {
+                        highlightedNodeIndex = highlightedNode;
+                        highlighted = w;
+                        closestDist = dist;
+                    }
                 }
 
                 if (w.GetClosestSectionIndex(mousePos, highlighted == null ? sectionSelectDist : closestDist, out dist) > -1)
                 {
-                    highlighted = w;
-                    closestDist = dist;
+                    //prefer nodes over sections
+                    if (dist + nodeSelectDist * 0.5f < closestDist)
+                    {
+                        highlightedNodeIndex = null;
+                        highlighted = w;
+                        closestDist = dist + nodeSelectDist * 0.5f;
+                    }
                 }
-
             }
-
 
             if (highlighted != null)
             {

@@ -60,7 +60,7 @@ namespace Barotrauma
 
         public float DamageRange
         {
-            get {  return (float)Math.Sqrt(size.X) * 20.0f; }
+            get { return (float)Math.Sqrt(size.X) * 20.0f; }
         }
 
         public Hull Hull
@@ -181,7 +181,7 @@ namespace Barotrauma
 
         private void OnChangeHull(Vector2 pos, Hull particleHull)
         {
-            if (particleHull == hull || particleHull==null) return;
+            if (particleHull == hull || particleHull == null) return;
 
             //hull already has a firesource roughly at the particles position -> don't create a new one
             if (particleHull.FireSources.Find(fs => pos.X > fs.position.X - 100.0f && pos.X < fs.position.X + fs.size.X + 100.0f) != null) return;
@@ -198,18 +198,30 @@ namespace Barotrauma
                 Character c = Character.CharacterList[i];
                 if (c.AnimController.CurrentHull == null || c.IsDead) continue;
 
-                float range = DamageRange;
-                if (c.Position.X < position.X - range || c.Position.X > position.X + size.X + range) continue;
-                if (c.Position.Y < position.Y - size.Y || c.Position.Y > hull.Rect.Y) continue;
+                if (!IsInDamageRange(c, DamageRange)) continue;
 
                 float dmg = (float)Math.Sqrt(size.X) * deltaTime / c.AnimController.Limbs.Length;
                 foreach (Limb limb in c.AnimController.Limbs)
                 {
-                    if (limb.WearingItems.Find(w => w != null && w.WearableComponent.Item.FireProof) != null) continue;
-                    limb.Burnt += dmg * 10.0f;
                     c.AddDamage(limb.SimPosition, DamageType.Burn, dmg, 0, 0, false);
                 }
             }
+        }
+
+        public bool IsInDamageRange(Character c, float damageRange)
+        {
+            if (c.Position.X < position.X - damageRange || c.Position.X > position.X + size.X + damageRange) return false;
+            if (c.Position.Y < position.Y - size.Y || c.Position.Y > hull.Rect.Y) return false;
+
+            return true;
+        }
+
+        public bool IsInDamageRange(Vector2 worldPosition, float damageRange)
+        {
+            if (worldPosition.X < WorldPosition.X - damageRange || worldPosition.X > WorldPosition.X + size.X + damageRange) return false;
+            if (worldPosition.Y < WorldPosition.Y - size.Y || worldPosition.Y > hull.WorldRect.Y) return false;
+
+            return true;
         }
 
         private void DamageItems(float deltaTime)
@@ -219,7 +231,15 @@ namespace Barotrauma
             foreach (Item item in Item.ItemList)
             {
                 if (item.CurrentHull != hull || item.FireProof || item.Condition <= 0.0f) continue;
-                if (item.ParentInventory != null && item.ParentInventory.Owner is Character) return;
+
+                //don't apply OnFire effects if the item is inside a fireproof container
+                //(or if it's inside a container that's inside a fireproof container, etc)
+                Item container = item.Container;
+                while (container != null)
+                {
+                    if (container.FireProof) return;
+                    container = container.Container;
+                }
 
                 float range = (float)Math.Sqrt(size.X) * 10.0f;
                 if (item.Position.X < position.X - range || item.Position.X > position.X + size.X + range) continue;
@@ -245,7 +265,7 @@ namespace Barotrauma
             for (int i = 0; i < steamCount; i++)
             {
                 Vector2 spawnPos = new Vector2(
-                    WorldPosition.X + Rand.Range(0.0f, size.X), 
+                    WorldPosition.X + Rand.Range(0.0f, size.X),
                     WorldPosition.Y + 10.0f);
 
                 Vector2 speed = new Vector2((spawnPos.X - (WorldPosition.X + size.X / 2.0f)), (float)Math.Sqrt(size.X) * Rand.Range(20.0f, 25.0f));
@@ -264,26 +284,21 @@ namespace Barotrauma
 
             //evaporate some of the water
             hull.WaterVolume -= extinquishAmount;
-            
+
             if (GameMain.Client != null) return;
 
             if (size.X < 1.0f) Remove();
         }
 
-        public void Extinguish(float deltaTime, float amount, Vector2 pos)
+        public void Extinguish(float deltaTime, float amount)
         {
-            float range = 100.0f;
-
-            if (pos.X < WorldPosition.X - range || pos.X > WorldPosition.X + size.X + range) return;
-            if (pos.Y < WorldPosition.Y - range || pos.Y > WorldPosition.Y + 500.0f) return;
-
             float extinquishAmount = amount * deltaTime;
 
 #if CLIENT
             float steamCount = Rand.Range(-5.0f, (float)Math.Sqrt(amount));
             for (int i = 0; i < steamCount; i++)
             {
-                Vector2 spawnPos = new Vector2(pos.X + Rand.Range(-5.0f, 5.0f), Rand.Range(position.Y - size.Y, position.Y) + 10.0f);
+                Vector2 spawnPos = new Vector2(Rand.Range(position.X, position.X + size.X), Rand.Range(position.Y - size.Y, position.Y) + 10.0f);
 
                 Vector2 speed = new Vector2((spawnPos.X - (position.X + size.X / 2.0f)), (float)Math.Sqrt(size.X) * Rand.Range(20.0f, 25.0f));
 
@@ -306,6 +321,11 @@ namespace Barotrauma
             if (size.X < 1.0f) Remove();
         }
 
+        public void Extinguish(float deltaTime, float amount, Vector2 worldPosition)
+        {
+            if (IsInDamageRange(worldPosition, 100.0f)) Extinguish(deltaTime, amount);
+        }
+
         public void Remove()
         {
 #if CLIENT
@@ -325,7 +345,7 @@ namespace Barotrauma
             foreach (Decal d in burnDecals)
             {
                 d.StopFadeIn();
-            }            
+            }
 #endif
 
             hull.RemoveFire(this);

@@ -11,7 +11,7 @@ namespace Barotrauma.Items.Components
         
         private bool isOn;
 
-        [Editable, HasDefaultValue(1000.0f, true)]
+        [Editable, Serialize(1000.0f, true)]
         public float MaxPower
         {
             get { return maxPower; }
@@ -21,7 +21,7 @@ namespace Barotrauma.Items.Components
             }
         }
         
-        [Editable, HasDefaultValue(false, true)]
+        [Editable, Serialize(false, true)]
         public bool IsOn
         {
             get
@@ -31,42 +31,35 @@ namespace Barotrauma.Items.Components
             set
             {
                 isOn = value;
+                CanTransfer = value;
                 if (!isOn)
                 {
                     currPowerConsumption = 0.0f;
                 }
             }
         }
-
-        public override bool CanTransfer
-        {
-            get
-            {
-                return isOn;
-            }
-        }
-
+        
         public RelayComponent(Item item, XElement element)
             : base (item, element)
         {
             IsActive = true;
         }
-
+        
         public override void Update(float deltaTime, Camera cam)
         {
             base.Update(deltaTime, cam);
 
             item.SendSignal(0, IsOn ? "1" : "0", "state_out", null);
-        }
 
+            if (Math.Min(-currPowerConsumption, PowerLoad) > maxPower) item.Condition = 0.0f;
+        }
+        
         public override void ReceiveSignal(int stepsTaken, string signal, Connection connection, Item source, Character sender, float power=0.0f)
         {
-            if (connection.IsPower && connection.Name.Contains("_out")) return;
+            if (connection.IsPower) return;
 
             if (item.Condition <= 0.0f) return;
-
-            if (power > maxPower) item.Condition = 0.0f;
-            
+                        
             if (connection.Name.Contains("_in"))
             {
                 if (!IsOn) return;
@@ -78,7 +71,7 @@ namespace Barotrauma.Items.Components
 
                 if (connectionNumber > 0) outConnection += connectionNumber;
 
-                item.SendSignal(stepsTaken, signal, outConnection, sender,  power);
+                item.SendSignal(stepsTaken, signal, outConnection, sender, power);
             }
             else if (connection.Name == "toggle")
             {

@@ -47,21 +47,21 @@ namespace Barotrauma.Items.Components
             set { dockingDir = value; }
         }
 
-        [HasDefaultValue("32.0,32.0", false)]
-        public string DistanceTolerance
+        [Serialize("32.0,32.0", false)]
+        public Vector2 DistanceTolerance
         {
-            get { return XMLExtensions.Vector2ToString(distanceTolerance); }
-            set { distanceTolerance = XMLExtensions.ParseToVector2(value); }
+            get { return distanceTolerance; }
+            set { distanceTolerance = value; }
         }
 
-        [HasDefaultValue(32.0f, false)]
+        [Serialize(32.0f, false)]
         public float DockedDistance
         {
             get;
             set;
         }
 
-        [HasDefaultValue(true, false)]
+        [Serialize(true, false)]
         public bool IsHorizontal
         {
             get;
@@ -390,7 +390,7 @@ namespace Barotrauma.Items.Components
                 for (int i = 0; i < 2; i++)
                 {
                     hullRects[i].Location -= MathUtils.ToPoint((subs[i].WorldPosition - subs[i].HiddenSubPosition));
-                    hulls[i] = new Hull(MapEntityPrefab.list.Find(m => m.Name == "Hull"), hullRects[i], subs[i]);
+                    hulls[i] = new Hull(MapEntityPrefab.Find("Hull"), hullRects[i], subs[i]);
                     hulls[i].AddToGrid(subs[i]);
 
                     for (int j = 0; j < 2; j++)
@@ -420,7 +420,7 @@ namespace Barotrauma.Items.Components
                 for (int i = 0; i < 2; i++)
                 {
                     hullRects[i].Location -= MathUtils.ToPoint((subs[i].WorldPosition - subs[i].HiddenSubPosition));
-                    hulls[i] = new Hull(MapEntityPrefab.list.Find(m => m.Name == "Hull"), hullRects[i], subs[i]);
+                    hulls[i] = new Hull(MapEntityPrefab.Find("Hull"), hullRects[i], subs[i]);
                     hulls[i].AddToGrid(subs[i]);
 
                     if (hullIds[i] != null) hulls[i].ID = (ushort)hullIds[i];
@@ -699,12 +699,12 @@ namespace Barotrauma.Items.Components
                 if (docked)
                 {
                     if (item.Submarine != null && dockingTarget?.item?.Submarine != null)
-                        GameServer.Log(sender.Name + " docked " + item.Submarine.Name + " to " + dockingTarget.item.Submarine.Name, ServerLog.MessageType.ItemInteraction);
+                        GameServer.Log(sender.LogName + " docked " + item.Submarine.Name + " to " + dockingTarget.item.Submarine.Name, ServerLog.MessageType.ItemInteraction);
                 }
                 else
                 {
                     if (item.Submarine != null && prevDockingTarget?.item?.Submarine != null)
-                        GameServer.Log(sender.Name + " undocked " + item.Submarine.Name + " from " + prevDockingTarget.item.Submarine.Name, ServerLog.MessageType.ItemInteraction);
+                        GameServer.Log(sender.LogName + " undocked " + item.Submarine.Name + " from " + prevDockingTarget.item.Submarine.Name, ServerLog.MessageType.ItemInteraction);
                 }
             }
         }

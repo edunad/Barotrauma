@@ -1,59 +1,59 @@
 ﻿using Lidgren.Network;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 
 namespace Barotrauma.Networking
 {
-    [Flags]
-    enum ClientPermissions
-    {
-        None = 0,
-        [Description("End round")]
-        EndRound = 1,
-        [Description("Kick")]
-        Kick = 2,
-        [Description("Ban")]
-        Ban = 4,
-        [Description("Select submarine")]
-        SelectSub = 8,
-        [Description("Select game mode")]
-        SelectMode = 16,
-        [Description("Manage campaign")]
-        ManageCampaign = 32
-    }
-
     class Client
     {
-        public string name;
+        public string Name;
         public byte ID;
+
+        private float karma = 1.0f;
+        public float Karma
+        {
+            get
+            {
+                if (GameMain.Server == null) return 1.0f;
+                if (!GameMain.Server.KarmaEnabled) return 1.0f;
+                return karma;
+            }
+            set
+            {
+                if (GameMain.Server == null) return;
+                if (!GameMain.Server.KarmaEnabled) return;
+                karma = Math.Min(Math.Max(value,0.0f),1.0f);
+            }
+        }
 
         public byte TeamID = 0;
 
         public Character Character;
-        public CharacterInfo characterInfo;
+        public CharacterInfo CharacterInfo;
         public NetConnection Connection { get; set; }
-        public bool inGame;
-        public UInt16 lastRecvGeneralUpdate = 0;
+        public bool InGame;
         
-        public UInt16 lastSentChatMsgID = 0; //last msg this client said
-        public UInt16 lastRecvChatMsgID = 0; //last msg this client knows about
+        public UInt16 LastRecvGeneralUpdate = 0;
+        
+        public UInt16 LastSentChatMsgID = 0; //last msg this client said
+        public UInt16 LastRecvChatMsgID = 0; //last msg this client knows about
 
-        public UInt16 lastSentEntityEventID = 0;
-        public UInt16 lastRecvEntityEventID = 0;
+        public UInt16 LastSentEntityEventID = 0;
+        public UInt16 LastRecvEntityEventID = 0;
 
-        public UInt16 lastRecvCampaignUpdate = 0;
-
-        public List<ChatMessage> chatMsgQueue = new List<ChatMessage>();
-        public UInt16 lastChatMsgQueueID;
+        public UInt16 LastRecvCampaignUpdate = 0;
+        public UInt16 LastRecvCampaignSave = 0;
+        
+        public readonly List<ChatMessage> ChatMsgQueue = new List<ChatMessage>();
+        public UInt16 LastChatMsgQueueID;
 
         //latest chat messages sent by this client
-        public List<string> lastSentChatMessages = new List<string>(); 
+        public readonly List<string> LastSentChatMessages = new List<string>(); 
         public float ChatSpamSpeed;
         public float ChatSpamTimer;
         public int ChatSpamCount;
-
+        
         public double MidRoundSyncTimeOut;
 
         public bool NeedsMidRoundSync;
@@ -65,36 +65,36 @@ namespace Barotrauma.Networking
 
         //when was a specific entity event last sent to the client
         //  key = event id, value = NetTime.Now when sending
-        public Dictionary<UInt16, float> entityEventLastSent;
-        
-        private Queue<Entity> pendingPositionUpdates = new Queue<Entity>();
+        public readonly Dictionary<UInt16, float> EntityEventLastSent = new Dictionary<UInt16, float>();
 
+        public readonly Queue<Entity> PendingPositionUpdates = new Queue<Entity>();
+        
         public bool ReadyToStart;
 
-        private object[] votes;
-
-        public List<JobPrefab> jobPreferences;
-        public JobPrefab assignedJob;
+        public List<JobPrefab> JobPreferences;
+        public JobPrefab AssignedJob;
         
-        public float deleteDisconnectedTimer;
+        public float DeleteDisconnectedTimer;
 
         public ClientPermissions Permissions = ClientPermissions.None;
+        public List<DebugConsole.Command> PermittedConsoleCommands
+        {
+            get;
+            private set;
+        }
 
         public bool SpectateOnly;
+                
+        private object[] votes;
 
-        public Queue<Entity> PendingPositionUpdates
-        {
-            get { return pendingPositionUpdates; }
-        }
-        
         public void InitClientSync()
         {
-            lastSentChatMsgID = 0;
-            lastRecvChatMsgID = ChatMessage.LastID;
+            LastSentChatMsgID = 0;
+            LastRecvChatMsgID = ChatMessage.LastID;
 
-            lastRecvGeneralUpdate = 0;
+            LastRecvGeneralUpdate = 0;
             
-            lastRecvEntityEventID = 0;
+            LastRecvEntityEventID = 0;
 
             UnreceivedEntityEventCount = 0;
             NeedsMidRoundSync = false;
@@ -113,21 +113,20 @@ namespace Barotrauma.Networking
 
         public Client(string name, byte ID)
         {
-            this.name = name;
+            this.Name = name;
             this.ID = ID;
 
+            PermittedConsoleCommands = new List<DebugConsole.Command>();
             kickVoters = new List<Client>();
 
             votes = new object[Enum.GetNames(typeof(VoteType)).Length];
 
-            jobPreferences = new List<JobPrefab>(JobPrefab.List.GetRange(0, Math.Min(JobPrefab.List.Count, 3)));
-
-            entityEventLastSent = new Dictionary<UInt16, float>();
+            JobPreferences = new List<JobPrefab>(JobPrefab.List.GetRange(0, Math.Min(JobPrefab.List.Count, 3)));
         }
 
         public static bool IsValidName(string name)
         {
-            if (name.Contains("\n") || name.Contains("\r\n")) return false;
+            if (name.Contains("\n") || name.Contains("\r")) return false;
 
             return (name.All(c =>
                 c != ';' &&
@@ -159,9 +158,10 @@ namespace Barotrauma.Networking
             return rName;
         }
 
-        public void SetPermissions(ClientPermissions permissions)
+        public void SetPermissions(ClientPermissions permissions, List<DebugConsole.Command> permittedConsoleCommands)
         {
             this.Permissions = permissions;
+            this.PermittedConsoleCommands = new List<DebugConsole.Command>(permittedConsoleCommands);
         }
 
         public void GivePermission(ClientPermissions permission)

@@ -8,45 +8,47 @@ namespace Barotrauma
 {
     partial class StructurePrefab : MapEntityPrefab
     {
-        //public static List<StructurePrefab> list = new List<StructurePrefab>();
-
-        //does the structure have a physics body
-        private bool hasBody;
-
-        private bool castShadow;
-
-        private bool isPlatform;
-        private Direction stairDirection;
         private bool canSpriteFlipX;
 
-        private float maxHealth;
+        private float health;
         
         //default size
         private Vector2 size;
         
-        public bool HasBody
+        //does the structure have a physics body
+        [Serialize(false, false)]
+        public bool Body
         {
-            get { return hasBody; }
+            get;
+            private set;
         }
 
-        public bool IsPlatform
+        [Serialize(false, false)]
+        public bool Platform
         {
-            get { return isPlatform; }
+            get;
+            private set;
         }
 
-        public float MaxHealth
+        [Serialize(100.0f, false)]
+        public float Health
         {
-            get { return maxHealth; }
+            get { return health; }
+            set { health = Math.Max(value, 0.0f); }
         }
 
+        [Serialize(false, false)]
         public bool CastShadow
         {
-            get { return castShadow; }
+            get;
+            private set;
         }
 
+        [Serialize(Direction.None, false)]
         public Direction StairDirection
         {
-            get { return stairDirection; }
+            get;
+            private set;
         }
 
         public bool CanSpriteFlipX
@@ -54,9 +56,11 @@ namespace Barotrauma
             get { return canSpriteFlipX; }
         }
 
+        [Serialize("0,0", true)]
         public Vector2 Size
         {
             get { return size; }
+            private set { size = value; }
         }
 
         public Sprite BackgroundSprite
@@ -76,7 +80,7 @@ namespace Barotrauma
                 {        
                     StructurePrefab sp = Load(el);
                     
-                    list.Add(sp);
+                    List.Add(sp);
                 }
             }
         }
@@ -86,8 +90,8 @@ namespace Barotrauma
             StructurePrefab sp = new StructurePrefab();
             sp.name = element.Name.ToString();
             
-            sp.tags = new List<string>();
-            sp.tags.AddRange(element.GetAttributeString("tags", "").Split(','));
+            sp.Tags = new List<string>();
+            sp.Tags.AddRange(element.GetAttributeString("tags", "").Split(','));
 
             foreach (XElement subElement in element.Elements())
             {
@@ -95,6 +99,10 @@ namespace Barotrauma
                 {
                     case "sprite":
                         sp.sprite = new Sprite(subElement);
+                        if (subElement.Attribute("sourcerect") == null)
+                        {
+                            DebugConsole.ThrowError("Warning - sprite sourcerect not configured for structure \"" + sp.name + "\"!");
+                        }
 
                         if (subElement.GetAttributeBool("fliphorizontal", false)) 
                             sp.sprite.effects = SpriteEffects.FlipHorizontally;
@@ -117,35 +125,28 @@ namespace Barotrauma
             }
 
             MapEntityCategory category;
-
             if (!Enum.TryParse(element.GetAttributeString("category", "Structure"), true, out category))
             {
                 category = MapEntityCategory.Structure;
             }
-
             sp.Category = category;
 
-            sp.Description = element.GetAttributeString("description", "");
-
-            sp.size = Vector2.Zero;
-            sp.size.X = element.GetAttributeFloat("width", 0.0f);
-            sp.size.Y = element.GetAttributeFloat("height", 0.0f);
+            string aliases = element.GetAttributeString("aliases", "");
+            if (!string.IsNullOrWhiteSpace(aliases))
+            {
+                sp.Aliases = aliases.Split(',');
+            }
             
-            string spriteColorStr = element.GetAttributeString("spritecolor", "1.0,1.0,1.0,1.0");
-            sp.SpriteColor = new Color(XMLExtensions.ParseToVector4(spriteColorStr));
+            SerializableProperty.DeserializeProperties(sp, element);
 
-            sp.maxHealth = element.GetAttributeFloat("health", 100.0f);
+            //backwards compatibility
+            if (element.Attribute("size") == null)
+            {
+                sp.size = Vector2.Zero;
+                sp.size.X = element.GetAttributeFloat("width", 0.0f);
+                sp.size.Y = element.GetAttributeFloat("height", 0.0f);
+            }
 
-            sp.resizeHorizontal = element.GetAttributeBool("resizehorizontal", false);
-            sp.resizeVertical = element.GetAttributeBool("resizevertical", false);
-            
-            sp.isPlatform = element.GetAttributeBool("platform", false);
-            sp.stairDirection = (Direction)Enum.Parse(typeof(Direction), element.GetAttributeString("stairdirection", "None"), true);
-
-            sp.castShadow = element.GetAttributeBool("castshadow", false); 
-            
-            sp.hasBody = element.GetAttributeBool("body", false); 
-            
             return sp;
         }
 
@@ -165,15 +166,15 @@ namespace Barotrauma
             else
             {
                 Vector2 placeSize = size;
-                if (resizeHorizontal) placeSize.X = position.X - placePosition.X;
-                if (resizeVertical) placeSize.Y = placePosition.Y - position.Y;
+                if (ResizeHorizontal) placeSize.X = position.X - placePosition.X;
+                if (ResizeVertical) placeSize.Y = placePosition.Y - position.Y;
 
                 newRect = Submarine.AbsRect(placePosition, placeSize);
 
                 if (PlayerInput.LeftButtonReleased())
                 {
                     //don't allow resizing width/height to zero
-                   if ((!resizeHorizontal || placeSize.X != 0.0f) && (!resizeVertical || placeSize.Y != 0.0f))
+                   if ((!ResizeHorizontal || placeSize.X != 0.0f) && (!ResizeVertical || placeSize.Y != 0.0f))
                     {
                         newRect.Location -= MathUtils.ToPoint(Submarine.MainSub.Position);
 

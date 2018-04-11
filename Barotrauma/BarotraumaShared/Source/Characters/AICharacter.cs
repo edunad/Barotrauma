@@ -1,10 +1,17 @@
 ﻿using Microsoft.Xna.Framework;
-using System;
 
 namespace Barotrauma
 {
     partial class AICharacter : Character
     {
+        //characters that are further than this from the camera (and all clients)
+        //have all their limb physics bodies disabled
+        const float EnableSimplePhysicsDist = 10000.0f;        
+        const float DisableSimplePhysicsDist = EnableSimplePhysicsDist * 0.9f;
+
+        const float EnableSimplePhysicsDistSqr = EnableSimplePhysicsDist * EnableSimplePhysicsDist;
+        const float DisableSimplePhysicsDistSqr = DisableSimplePhysicsDist * DisableSimplePhysicsDist;
+        
         private AIController aiController;
         
         public override AIController AIController
@@ -28,38 +35,60 @@ namespace Barotrauma
         {
             base.Update(deltaTime, cam);
 
-            if (!Enabled || IsRemotePlayer) return;
-            
-            float dist = Vector2.DistanceSquared(cam.WorldViewCenter, WorldPosition);
-            if (dist > 8000.0f * 8000.0f)
+            if (!Enabled) return;
+
+            if (!IsRemotePlayer)
             {
-                AnimController.SimplePhysicsEnabled = true;
-            }
-            else if (dist < 7000.0f * 7000.0f)
-            {
-                AnimController.SimplePhysicsEnabled = false;
+                float characterDist = Vector2.DistanceSquared(cam.WorldViewCenter, WorldPosition);
+                if (GameMain.Server != null)
+                {
+                    //get the distance from the closest player to this character
+                    foreach (Character c in CharacterList)
+                    {
+                        if (c != this && (c.IsRemotePlayer || c == GameMain.Server.Character))
+                        {
+                            float dist = Vector2.DistanceSquared(c.WorldPosition, WorldPosition);
+                            if (dist < characterDist)
+                            {
+                                characterDist = dist;
+                                if (characterDist < DisableSimplePhysicsDistSqr) break;
+                            }
+                        }
+                    }
+                }
+
+                if (characterDist > EnableSimplePhysicsDistSqr)
+                {
+                    AnimController.SimplePhysicsEnabled = true;
+                }
+                else if (characterDist < DisableSimplePhysicsDistSqr)
+                {
+                    AnimController.SimplePhysicsEnabled = false;
+                }
             }
 
             if (IsDead || Health <= 0.0f || IsUnconscious || Stun > 0.0f) return;
-
             if (Controlled == this || !aiController.Enabled) return;
             
             SoundUpdate(deltaTime);
 
-            aiController.Update(deltaTime);
+            if (!IsRemotePlayer)
+            {
+                aiController.Update(deltaTime);
+            }
         }
         partial void SoundUpdate(float deltaTime);
 
-        public override void AddDamage(CauseOfDeath causeOfDeath, float amount, IDamageable attacker)
+        public override void AddDamage(CauseOfDeath causeOfDeath, float amount, Character attacker)
         {
             base.AddDamage(causeOfDeath, amount, attacker);
 
-            if (attacker!=null) aiController.OnAttacked(attacker, amount);
+            if (attacker != null) aiController.OnAttacked(attacker, amount);
         }
 
-        public override AttackResult AddDamage(IDamageable attacker, Vector2 worldPosition, Attack attack, float deltaTime, bool playSound = false)
+        public override AttackResult ApplyAttack(Character attacker, Vector2 worldPosition, Attack attack, float deltaTime, bool playSound = false, Limb limb = null)
         {
-            AttackResult result = base.AddDamage(attacker, worldPosition, attack, deltaTime, playSound);
+            AttackResult result = base.ApplyAttack(attacker, worldPosition, attack, deltaTime, playSound, limb);
 
             aiController.OnAttacked(attacker, result.Damage + result.Bleeding);
 

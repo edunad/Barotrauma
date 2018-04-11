@@ -8,25 +8,10 @@ using System.Xml.Linq;
 
 namespace Barotrauma
 {
-    public enum WindowMode
-    {
-        Windowed, Fullscreen, BorderlessWindowed
-    }
-
     public partial class GameSettings
     {
         private GUIFrame settingsFrame;
         private GUIButton applyButton;
-        
-        private float soundVolume, musicVolume;
-
-        private WindowMode windowMode;
-
-        public List<string> jobNamePreferences;
-
-        private KeyOrMouse[] keyMapping;
-
-        private bool unsavedSettings;
         
         public GUIFrame SettingsFrame
         {
@@ -41,263 +26,7 @@ namespace Barotrauma
         {
             return keyMapping[(int)inputType];
         }
-
-        public int GraphicsWidth { get; set; }
-        public int GraphicsHeight { get; set; }
-
-        public bool VSyncEnabled { get; set; }
-
-        public bool EnableSplashScreen { get; set; }
-
-        //public bool FullScreenEnabled { get; set; }
-
-        public WindowMode WindowMode
-        {
-            get { return windowMode; }
-            set { windowMode = value; }
-        }
         
-        public List<string> JobNamePreferences
-        {
-            get { return jobNamePreferences; }
-            set
-            {
-                // Begin saving coroutine. Remove any existing save coroutines if one is running.
-                if (CoroutineManager.IsCoroutineRunning("saveCoroutine")) { CoroutineManager.StopCoroutines("saveCoroutine"); }
-                CoroutineManager.StartCoroutine(ApplyUnsavedChanges(), "saveCoroutine");
-
-                jobNamePreferences = value;
-            }
-        }
-        
-        public bool UnsavedSettings
-        {
-            get
-            {
-                return unsavedSettings;
-            }
-            private set
-            {
-                unsavedSettings = value;
-
-                if (applyButton != null)
-                {
-                    //applyButton.Selected = unsavedSettings;
-                    applyButton.Enabled = unsavedSettings;
-                    applyButton.Text = unsavedSettings ? "Apply*" : "Apply";
-                }
-            }
-        }
-
-        public float SoundVolume
-        {
-            get { return soundVolume; }
-            set
-            {
-                soundVolume = MathHelper.Clamp(value, 0.0f, 1.0f);
-                Sounds.SoundManager.MasterVolume = soundVolume;
-            }
-        }
-
-        public float MusicVolume
-        {
-            get { return musicVolume; }
-            set
-            {
-                musicVolume = MathHelper.Clamp(value, 0.0f, 1.0f);
-                SoundPlayer.MusicVolume = musicVolume;
-            }
-        }
-
-        partial void InitProjSpecific(XDocument doc)
-        {
-            if (doc == null)
-            {
-                GraphicsWidth = 1024;
-                GraphicsHeight = 678;
-                
-                MasterServerUrl = "";
-                
-                SelectedContentPackage = ContentPackage.list.Any() ? ContentPackage.list[0] : new ContentPackage("");
-
-                JobNamePreferences = new List<string>();
-                foreach (JobPrefab job in JobPrefab.List)
-                {
-                    JobNamePreferences.Add(job.Name);
-                }
-                return;
-            }
-
-            XElement graphicsMode = doc.Root.Element("graphicsmode");
-            GraphicsWidth = graphicsMode.GetAttributeInt("width", 0);
-            GraphicsHeight = graphicsMode.GetAttributeInt("height", 0);
-            VSyncEnabled = graphicsMode.GetAttributeBool("vsync", true);
-
-            if (GraphicsWidth == 0 || GraphicsHeight == 0)
-            {
-                GraphicsWidth = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Width;
-                GraphicsHeight = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height;
-            }
-
-            //FullScreenEnabled = ToolBox.GetAttributeBool(graphicsMode, "fullscreen", true);
-
-            var windowModeStr = graphicsMode.GetAttributeString("displaymode", "Fullscreen");
-            if (!Enum.TryParse<WindowMode>(windowModeStr, out windowMode))
-            {
-                windowMode = WindowMode.Fullscreen;
-            }
-
-            SoundVolume = doc.Root.GetAttributeFloat("soundvolume", 1.0f);
-            MusicVolume = doc.Root.GetAttributeFloat("musicvolume", 0.3f);
-
-            EnableSplashScreen = doc.Root.GetAttributeBool("enablesplashscreen", true);
-
-            keyMapping = new KeyOrMouse[Enum.GetNames(typeof(InputType)).Length];
-            keyMapping[(int)InputType.Up] = new KeyOrMouse(Keys.W);
-            keyMapping[(int)InputType.Down] = new KeyOrMouse(Keys.S);
-            keyMapping[(int)InputType.Left] = new KeyOrMouse(Keys.A);
-            keyMapping[(int)InputType.Right] = new KeyOrMouse(Keys.D);
-            keyMapping[(int)InputType.Run] = new KeyOrMouse(Keys.LeftShift);
-
-
-            keyMapping[(int)InputType.Chat] = new KeyOrMouse(Keys.Tab);
-            keyMapping[(int)InputType.CrewOrders] = new KeyOrMouse(Keys.C);
-
-            keyMapping[(int)InputType.Select] = new KeyOrMouse(Keys.E);
-
-            keyMapping[(int)InputType.Use] = new KeyOrMouse(0);
-            keyMapping[(int)InputType.Aim] = new KeyOrMouse(1);
-
-            foreach (XElement subElement in doc.Root.Elements())
-            {
-                switch (subElement.Name.ToString().ToLowerInvariant())
-                {
-                    case "keymapping":
-                        foreach (XAttribute attribute in subElement.Attributes())
-                        {
-                            InputType inputType;
-                            if (Enum.TryParse(attribute.Name.ToString(), true, out inputType))
-                            {
-                                int mouseButton;
-                                if (int.TryParse(attribute.Value.ToString(), out mouseButton))
-                                {
-                                    keyMapping[(int)inputType] = new KeyOrMouse(mouseButton);
-                                }
-                                else
-                                {
-                                    Keys key;
-                                    if (Enum.TryParse(attribute.Value.ToString(), true, out key))
-                                    {
-                                        keyMapping[(int)inputType] = new KeyOrMouse(key);
-                                    }
-                                }
-                            }
-                        }
-                        break;
-                    case "gameplay":
-                        JobNamePreferences = new List<string>();
-                        foreach (XElement ele in subElement.Element("jobpreferences").Elements("job"))
-                        {
-                            JobNamePreferences.Add(ele.GetAttributeString("name", ""));
-                        }
-                        break;
-                }
-            }
-
-            foreach (InputType inputType in Enum.GetValues(typeof(InputType)))
-            {
-                if (keyMapping[(int)inputType] == null)
-                {
-                    DebugConsole.ThrowError("Key binding for the input type \"" + inputType + " not set!");
-                    keyMapping[(int)inputType] = new KeyOrMouse(Keys.D1);
-                }
-            }
-
-
-            UnsavedSettings = false;
-        }
-
-        public void Save(string filePath)
-        {
-            UnsavedSettings = false;
-
-            XDocument doc = new XDocument();
-
-            if (doc.Root == null)
-            {
-                doc.Add(new XElement("config"));
-            }
-
-            doc.Root.Add(
-                new XAttribute("masterserverurl", MasterServerUrl),
-                new XAttribute("autocheckupdates", AutoCheckUpdates),
-                new XAttribute("musicvolume", musicVolume),
-                new XAttribute("soundvolume", soundVolume),
-                new XAttribute("verboselogging", VerboseLogging),
-                new XAttribute("enablesplashscreen", EnableSplashScreen));
-
-            if (WasGameUpdated)
-            {
-                doc.Root.Add(new XAttribute("wasgameupdated", true));
-            }
-
-            XElement gMode = doc.Root.Element("graphicsmode");
-            if (gMode == null)
-            {
-                gMode = new XElement("graphicsmode");
-                doc.Root.Add(gMode);
-            }
-
-            if (GraphicsWidth == 0 || GraphicsHeight == 0)
-            {
-                gMode.ReplaceAttributes(new XAttribute("displaymode", windowMode));
-            }
-            else
-            {
-                gMode.ReplaceAttributes(
-                    new XAttribute("width", GraphicsWidth),
-                    new XAttribute("height", GraphicsHeight),
-                    new XAttribute("vsync", VSyncEnabled),
-                    new XAttribute("displaymode", windowMode));
-            }
-
-
-            if (SelectedContentPackage != null)
-            {
-                doc.Root.Add(new XElement("contentpackage",
-                    new XAttribute("path", SelectedContentPackage.Path)));
-            }
-
-            var keyMappingElement = new XElement("keymapping");
-            doc.Root.Add(keyMappingElement);
-            for (int i = 0; i < keyMapping.Length; i++)
-            {
-                if (keyMapping[i].MouseButton == null)
-                {
-                    keyMappingElement.Add(new XAttribute(((InputType)i).ToString(), keyMapping[i].Key));
-                }
-                else
-                {
-                    keyMappingElement.Add(new XAttribute(((InputType)i).ToString(), keyMapping[i].MouseButton));
-                }
-
-
-            }
-
-            var gameplay = new XElement("gameplay");
-
-            var jobPreferences = new XElement("jobpreferences");
-            foreach (string jobName in JobNamePreferences)
-            {
-                jobPreferences.Add(new XElement("job", new XAttribute("name", jobName)));
-            }
-
-            gameplay.Add(jobPreferences);
-            doc.Root.Add(gameplay);
-
-            doc.Save(filePath);
-        }
-
         private bool ChangeSoundVolume(GUIScrollBar scrollBar, float barScroll)
         {
             UnsavedSettings = true;
@@ -323,11 +52,11 @@ namespace Barotrauma
         {
             settingsFrame = new GUIFrame(new Rectangle(0, 0, 500, 500), null, Alignment.Center, "");
 
-            new GUITextBlock(new Rectangle(0, -30, 0, 30), "Settings", "", Alignment.TopCenter, Alignment.TopCenter, settingsFrame, false, GUI.LargeFont);
+            new GUITextBlock(new Rectangle(0, -30, 0, 30), TextManager.Get("Settings"), "", Alignment.TopCenter, Alignment.TopCenter, settingsFrame, false, GUI.LargeFont);
 
             int x = 0, y = 10;
 
-            new GUITextBlock(new Rectangle(0, y, 20, 20), "Resolution", "", Alignment.TopLeft, Alignment.TopLeft, settingsFrame);
+            new GUITextBlock(new Rectangle(0, y, 20, 20), TextManager.Get("Resolution"), "", Alignment.TopLeft, Alignment.TopLeft, settingsFrame);
             var resolutionDD = new GUIDropDown(new Rectangle(0, y + 20, 180, 20), "", "", settingsFrame);
             resolutionDD.OnSelected = SelectResolution;
 
@@ -353,19 +82,24 @@ namespace Barotrauma
             //fullScreenTick.OnSelected = ToggleFullScreen;
             //fullScreenTick.Selected = FullScreenEnabled;
 
-            new GUITextBlock(new Rectangle(x, y, 20, 20), "Display mode", "", Alignment.TopLeft, Alignment.TopLeft, settingsFrame);
+            new GUITextBlock(new Rectangle(x, y, 20, 20), TextManager.Get("DisplayMode"), "", Alignment.TopLeft, Alignment.TopLeft, settingsFrame);
             var displayModeDD = new GUIDropDown(new Rectangle(x, y + 20, 180, 20), "", "", settingsFrame);
-            displayModeDD.AddItem("Fullscreen", WindowMode.Fullscreen);
-            displayModeDD.AddItem("Windowed", WindowMode.Windowed);
-            displayModeDD.AddItem("Borderless windowed", WindowMode.BorderlessWindowed);
+            displayModeDD.AddItem(TextManager.Get("Fullscreen"), WindowMode.Fullscreen);
+            displayModeDD.AddItem(TextManager.Get("Windowed"), WindowMode.Windowed);
+            displayModeDD.AddItem(TextManager.Get("BorderlessWindowed"), WindowMode.BorderlessWindowed);
 
             displayModeDD.SelectItem(GameMain.Config.WindowMode);
 
-            displayModeDD.OnSelected = (guiComponent, obj) => { GameMain.Config.WindowMode = (WindowMode)guiComponent.UserData; return true; };
+            displayModeDD.OnSelected = (guiComponent, obj) => 
+            {
+                UnsavedSettings = true;
+                GameMain.Config.WindowMode = (WindowMode)guiComponent.UserData;
+                return true;
+            };
 
             y += 70;
 
-            GUITickBox vsyncTickBox = new GUITickBox(new Rectangle(0, y, 20, 20), "Enable vertical sync", Alignment.CenterY | Alignment.Left, settingsFrame);
+            GUITickBox vsyncTickBox = new GUITickBox(new Rectangle(0, y, 20, 20), TextManager.Get("EnableVSync"), Alignment.CenterY | Alignment.Left, settingsFrame);
             vsyncTickBox.OnSelected = (GUITickBox box) =>
             {
                 VSyncEnabled = !VSyncEnabled;
@@ -379,13 +113,13 @@ namespace Barotrauma
 
             y += 70;
 
-            new GUITextBlock(new Rectangle(0, y, 100, 20), "Sound volume:", "", settingsFrame);
+            new GUITextBlock(new Rectangle(0, y, 100, 20), TextManager.Get("SoundVolume"), "", settingsFrame);
             GUIScrollBar soundScrollBar = new GUIScrollBar(new Rectangle(0, y + 20, 150, 20), "", 0.1f, settingsFrame);
             soundScrollBar.BarScroll = SoundVolume;
             soundScrollBar.OnMoved = ChangeSoundVolume;
             soundScrollBar.Step = 0.05f;
 
-            new GUITextBlock(new Rectangle(0, y + 40, 100, 20), "Music volume:", "", settingsFrame);
+            new GUITextBlock(new Rectangle(0, y + 40, 100, 20), TextManager.Get("MusicVolume"), "", settingsFrame);
             GUIScrollBar musicScrollBar = new GUIScrollBar(new Rectangle(0, y + 60, 150, 20), "", 0.1f, settingsFrame);
             musicScrollBar.BarScroll = MusicVolume;
             musicScrollBar.OnMoved = ChangeMusicVolume;
@@ -394,18 +128,18 @@ namespace Barotrauma
             x = 200;
             y = 10;
 
-            new GUITextBlock(new Rectangle(x, y, 20, 20), "Content package", "", Alignment.TopLeft, Alignment.TopLeft, settingsFrame);
+            new GUITextBlock(new Rectangle(x, y, 20, 20), TextManager.Get("ContentPackage"), "", Alignment.TopLeft, Alignment.TopLeft, settingsFrame);
             var contentPackageDD = new GUIDropDown(new Rectangle(x, y + 20, 200, 20), "", "", settingsFrame);
+            contentPackageDD.OnSelected = SelectContentPackage;
 
             foreach (ContentPackage contentPackage in ContentPackage.list)
             {
                 contentPackageDD.AddItem(contentPackage.Name, contentPackage);
-
                 if (SelectedContentPackage == contentPackage) contentPackageDD.SelectItem(contentPackage);
             }
 
             y += 50;
-            new GUITextBlock(new Rectangle(x, y, 100, 20), "Controls:", "", settingsFrame);
+            new GUITextBlock(new Rectangle(x, y, 100, 20), TextManager.Get("Controls"), "", settingsFrame);
             y += 30;
             var inputNames = Enum.GetNames(typeof(InputType));
             for (int i = 0; i < inputNames.Length; i++)
@@ -421,7 +155,7 @@ namespace Barotrauma
                 y += 20;
             }
 
-            applyButton = new GUIButton(new Rectangle(0, 0, 100, 20), "Apply", Alignment.BottomRight, "", settingsFrame);
+            applyButton = new GUIButton(new Rectangle(0, 0, 100, 20), TextManager.Get("ApplySettingsButton"), Alignment.BottomRight, "", settingsFrame);
             applyButton.OnClicked = ApplyClicked;
         }
 
@@ -430,14 +164,7 @@ namespace Barotrauma
             textBox.Text = "";
             CoroutineManager.StartCoroutine(WaitForKeyPress(textBox));
         }
-
-        private bool MarkUnappliedChanges(GUIButton button, object obj)
-        {
-            UnsavedSettings = true;
-
-            return true;
-        }
-
+        
         private bool SelectResolution(GUIComponent selected, object userData)
         {
             DisplayMode mode = selected.UserData as DisplayMode;
@@ -448,19 +175,17 @@ namespace Barotrauma
             GraphicsWidth = mode.Width;
             GraphicsHeight = mode.Height;
 
-
-            //GameMain.Graphics.PreferredBackBufferWidth = GraphicsWidth;
-            //GameMain.Graphics.PreferredBackBufferHeight = GraphicsHeight;
-            //GameMain.Graphics.ApplyChanges();
-
-            //CoroutineManager.StartCoroutine(GameMain.Instance.Load());
-
             UnsavedSettings = true;
 
             return true;
         }
 
-
+        private bool SelectContentPackage(GUIComponent select, object userData)
+        {
+            GameMain.Config.SelectedContentPackage = (ContentPackage)userData;
+            UnsavedSettings = true;
+            return true;
+        }
 
         private IEnumerable<object> WaitForKeyPress(GUITextBox keyBox)
         {
@@ -483,7 +208,7 @@ namespace Barotrauma
                 keyMapping[keyIndex] = new KeyOrMouse(0);
                 keyBox.Text = "Mouse1";
             }
-            else if (PlayerInput.LeftButtonClicked())
+            else if (PlayerInput.RightButtonClicked())
             {
                 keyMapping[keyIndex] = new KeyOrMouse(1);
                 keyBox.Text = "Mouse2";
@@ -503,23 +228,21 @@ namespace Barotrauma
 
             yield return CoroutineStatus.Success;
         }
-
-        private IEnumerable<object> ApplyUnsavedChanges()
-        {
-            yield return new WaitForSeconds(10.0f);
-
-            Save("config.xml");
-        }
-
+        
         private bool ApplyClicked(GUIButton button, object userData)
         {
             Save("config.xml");
 
             settingsFrame.Flash(Color.Green);
+            
+            if (GameMain.WindowMode != GameMain.Config.WindowMode)
+            {
+                GameMain.Instance.SetWindowMode(GameMain.Config.WindowMode);
+            }
 
             if (GameMain.GraphicsWidth != GameMain.Config.GraphicsWidth || GameMain.GraphicsHeight != GameMain.Config.GraphicsHeight)
             {
-                new GUIMessageBox("Restart required", "You need to restart the game for the resolution changes to take effect.");
+                new GUIMessageBox(TextManager.Get("RestartRequiredLabel"), TextManager.Get("RestartRequiredText"));
             }
 
             return true;

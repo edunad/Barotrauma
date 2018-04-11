@@ -1,4 +1,4 @@
-﻿using Barotrauma.Networking;
+using Barotrauma.Networking;
 using Barotrauma.Particles;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
@@ -14,12 +14,13 @@ namespace Barotrauma
 {
     class GameMain : Game
     {
+        public static bool ShowFPS = true;
         public static bool DebugDraw;
         
         public static FrameCounter FrameCounter;
 
         public static readonly Version Version = Assembly.GetEntryAssembly().GetName().Version;
-
+        
         public static GameScreen            GameScreen;
         public static MainMenuScreen        MainMenuScreen;
         public static LobbyScreen           LobbyScreen;
@@ -27,8 +28,9 @@ namespace Barotrauma
         public static NetLobbyScreen        NetLobbyScreen;
         public static ServerListScreen      ServerListScreen;
 
-        public static EditMapScreen         EditMapScreen;
-        public static EditCharacterScreen   EditCharacterScreen;
+        public static SubEditorScreen         SubEditorScreen;
+        public static CharacterEditorScreen   CharacterEditorScreen;
+        public static ParticleEditorScreen  ParticleEditorScreen;
 
         public static Lights.LightManager LightManager;
         
@@ -58,6 +60,8 @@ namespace Barotrauma
 
         private static SpriteBatch spriteBatch;
 
+        private Viewport defaultViewport;
+
         public static GameMain Instance
         {
             get;
@@ -70,6 +74,12 @@ namespace Barotrauma
             private set;
         }
         
+        public static WindowMode WindowMode
+        {
+            get;
+            private set;
+        }
+
         public static int GraphicsWidth
         {
             get;
@@ -160,13 +170,26 @@ namespace Barotrauma
                                             (GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height - GraphicsHeight) / 2);
             }
 
-            GraphicsDeviceManager.HardwareModeSwitch = Config.WindowMode != WindowMode.BorderlessWindowed;
-
-            GraphicsDeviceManager.IsFullScreen = Config.WindowMode == WindowMode.Fullscreen || Config.WindowMode == WindowMode.BorderlessWindowed;
             GraphicsDeviceManager.PreferredBackBufferWidth = GraphicsWidth;
             GraphicsDeviceManager.PreferredBackBufferHeight = GraphicsHeight;
 
+            SetWindowMode(Config.WindowMode);
+
+            defaultViewport = GraphicsDevice.Viewport;
+        }
+
+        public void SetWindowMode(WindowMode windowMode)
+        {
+            WindowMode = windowMode;
+            GraphicsDeviceManager.HardwareModeSwitch = Config.WindowMode != WindowMode.BorderlessWindowed;
+            GraphicsDeviceManager.IsFullScreen = Config.WindowMode == WindowMode.Fullscreen || Config.WindowMode == WindowMode.BorderlessWindowed;
+            
             GraphicsDeviceManager.ApplyChanges();
+        }
+
+        public void ResetViewPort()
+        {
+            GraphicsDevice.Viewport = defaultViewport;
         }
 
         /// <summary>
@@ -223,7 +246,7 @@ namespace Barotrauma
             DebugConsole.Log(SelectedPackage == null ? "No content package selected" : "Content package \"" + SelectedPackage.Name + "\" selected");
         yield return CoroutineStatus.Running;
 
-            LightManager = new Lights.LightManager(base.GraphicsDevice);
+            LightManager = new Lights.LightManager(base.GraphicsDevice, Content);
 
             Hull.renderer = new WaterRenderer(base.GraphicsDevice, Content);
             TitleScreen.LoadState = 1.0f;
@@ -279,18 +302,20 @@ namespace Barotrauma
             TitleScreen.LoadState = 90.0f;
         yield return CoroutineStatus.Running;
 
-            MainMenuScreen      =   new MainMenuScreen(this); 
-            LobbyScreen         =   new LobbyScreen();
+            MainMenuScreen          =   new MainMenuScreen(this); 
+            LobbyScreen             =   new LobbyScreen();
             
-            ServerListScreen    =   new ServerListScreen();
+            ServerListScreen        =   new ServerListScreen();
 
-            EditMapScreen       =   new EditMapScreen();
-            EditCharacterScreen =   new EditCharacterScreen();
+            SubEditorScreen         =   new SubEditorScreen(Content);
+            CharacterEditorScreen   =   new CharacterEditorScreen();
+            ParticleEditorScreen    =   new ParticleEditorScreen();
 
         yield return CoroutineStatus.Running;
 
-            ParticleManager = new ParticleManager("Content/Particles/ParticlePrefabs.xml", GameScreen.Cam);
-            DecalManager = new DecalManager("Content/Particles/DecalPrefabs.xml");
+            ParticleManager = new ParticleManager(GameScreen.Cam);
+            ParticleManager.LoadPrefabs();
+            DecalManager = new DecalManager();
         yield return CoroutineStatus.Running;
 
             LocationType.Init();
@@ -335,8 +360,11 @@ namespace Barotrauma
                 fixedTime.ElapsedGameTime = addTime;
                 fixedTime.TotalGameTime.Add(addTime);
                 base.Update(fixedTime);
-
-                PlayerInput.Update(Timing.Step);
+                
+                if (WindowActive)
+                {
+                    PlayerInput.Update(Timing.Step);
+                }
 
                 if (loadingScreenOpen)
                 {
@@ -381,6 +409,7 @@ namespace Barotrauma
                     GUIComponent.UpdateMouseOn();
 
                     DebugConsole.Update(this, (float)Timing.Step);
+                    paused = paused || (DebugConsole.IsOpen && (NetworkMember == null || !NetworkMember.GameStarted));
                     
                     if (!paused)
                     {

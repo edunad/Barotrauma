@@ -16,22 +16,29 @@ namespace Barotrauma
             private set;
         }
 
+        public float Rotation
+        {
+            get;
+            private set;
+        }
+
         public readonly float Timestamp;
         public readonly UInt16 ID;
 
-        public PosInfo(Vector2 pos, float time)
-            : this(pos, 0, time)
+        public PosInfo(Vector2 pos, float rotation, float time)
+            : this(pos, rotation, 0, time)
         {
         }
 
-        public PosInfo(Vector2 pos, UInt16 ID)
-            : this(pos, ID, 0.0f)
+        public PosInfo(Vector2 pos, float rotation, UInt16 ID)
+            : this(pos, rotation, ID, 0.0f)
         {
         }
         
-        protected PosInfo(Vector2 pos, UInt16 ID, float time)
+        protected PosInfo(Vector2 pos, float rotation, UInt16 ID, float time)
         {
             Position = pos;
+            Rotation = rotation;
             this.ID = ID;
             
             Timestamp = time;
@@ -52,9 +59,9 @@ namespace Barotrauma
             }         
         }
 
-        public void Translate(Vector2 amount)
+        public void Translate(Vector2 posAmount,float rotationAmount)
         {
-            Position += amount;
+            Position += posAmount; Rotation += rotationAmount;
         }
     }
 
@@ -169,7 +176,22 @@ namespace Barotrauma
         public bool Enabled
         {
             get { return isEnabled; }
-            set { isEnabled = value; if (isEnabled) body.Enabled = isPhysEnabled; else body.Enabled = false; }
+            set
+            {
+                isEnabled = value;
+                try
+                {
+                    if (isEnabled) body.Enabled = isPhysEnabled; else body.Enabled = false;
+                }
+                catch (Exception e)
+                {
+                    DebugConsole.ThrowError("Exception in PhysicsBody.Enabled = "+value+" ("+isPhysEnabled+")",e);
+                    if (UserData!=null) DebugConsole.NewMessage("PhysicsBody UserData: "+UserData.GetType().ToString(), Color.Red);
+                    if (GameMain.World.ContactManager == null) DebugConsole.NewMessage("ContactManager is null!", Color.Red);
+                    else if (GameMain.World.ContactManager.BroadPhase == null) DebugConsole.NewMessage("Broadphase is null!", Color.Red);
+                    if (body.FixtureList == null) DebugConsole.NewMessage("FixtureList is null!", Color.Red);
+                }
+            }
         }
 
         public bool PhysEnabled
@@ -374,8 +396,17 @@ namespace Barotrauma
             System.Diagnostics.Debug.Assert(Math.Abs(simPosition.X) < 1000000.0f);
             System.Diagnostics.Debug.Assert(Math.Abs(simPosition.Y) < 1000000.0f);
             
-
             body.SetTransform(simPosition, rotation);
+            SetPrevTransform(simPosition, rotation);
+        }
+
+        public void SetTransformIgnoreContacts(Vector2 simPosition, float rotation)
+        {
+            System.Diagnostics.Debug.Assert(MathUtils.IsValid(simPosition));
+            System.Diagnostics.Debug.Assert(Math.Abs(simPosition.X) < 1000000.0f);
+            System.Diagnostics.Debug.Assert(Math.Abs(simPosition.Y) < 1000000.0f);
+            
+            body.SetTransformIgnoreContacts(ref simPosition, rotation);
             SetPrevTransform(simPosition, rotation);
         }
 

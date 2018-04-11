@@ -24,14 +24,14 @@ namespace Barotrauma.Items.Components
 
         private float reloadTimer;
 
-        [HasDefaultValue(0.0f, false)]
+        [Serialize(0.0f, false)]
         public float Range
         {
             get { return ConvertUnits.ToDisplayUnits(range); }
             set { range = ConvertUnits.ToSimUnits(value); }
         }
 
-        [HasDefaultValue(0.5f, false)]
+        [Serialize(0.5f, false)]
         public float Reload
         {
             get { return reload; }
@@ -52,7 +52,7 @@ namespace Barotrauma.Items.Components
 
         public override bool Use(float deltaTime, Character character = null)
         {
-            if (character == null || reloadTimer>0.0f) return false;
+            if (character == null || reloadTimer > 0.0f) return false;
             if (!character.IsKeyDown(InputType.Aim) || hitting) return false;
 
             //don't allow hitting if the character is already hitting with another weapon
@@ -137,7 +137,7 @@ namespace Barotrauma.Items.Components
                 }
                 else
                 {
-                    ac.HoldItem(deltaTime, item, handlePos, new Vector2(hitPos, 0.0f), aimPos, false, holdAngle);
+                    ac.HoldItem(deltaTime, item, handlePos, holdPos, aimPos, false, holdAngle);
                 }
             }
             else
@@ -172,6 +172,7 @@ namespace Barotrauma.Items.Components
         private void SetUser(Character character)
         {
             if (user == character) return;
+            if (user != null && user.Removed) user = null;
 
             if (user != null)
             {
@@ -213,47 +214,84 @@ namespace Barotrauma.Items.Components
 
         private bool OnCollision(Fixture f1, Fixture f2, Contact contact)
         {
-            Character target = null;
-
-            Limb limb = f2.Body.UserData as Limb;
-            if (limb != null)
+            if (user == null || user.Removed)
             {
-                if (limb.character == picker) return false;
-                target = limb.character;
+                RestoreCollision();
+                hitting = false;
+                user = null;
+            }
+
+            Character targetCharacter = null;
+            Limb targetLimb = null;
+            Structure targetStructure = null;
+
+            if (f2.Body.UserData is Limb)
+            {
+                targetLimb = (Limb)f2.Body.UserData;
+                if (targetLimb.IsSevered || targetLimb.character == null) return false;
+                targetCharacter = targetLimb.character;
+            }
+            else if (f2.Body.UserData is Character)
+            {
+                targetCharacter = (Character)f2.Body.UserData;
+                targetLimb = targetCharacter.AnimController.GetLimb(LimbType.Torso); //Otherwise armor can be bypassed in strange ways
+            }
+            else if (f2.Body.UserData is Structure)
+            {
+                targetStructure = (Structure)f2.Body.UserData;
             }
             else
             {
                 return false;
             }
 
-            if (target == null)
+            if (targetCharacter == picker) return false;
+
+            if (attack != null)
             {
-                target = f2.Body.UserData as Character;
+                if (targetLimb != null)
+                {
+                    attack.DoDamageToLimb(user, targetLimb, item.WorldPosition, 1.0f);
+                }
+                else if (targetCharacter != null)
+                {
+                    attack.DoDamage(user, targetCharacter, item.WorldPosition, 1.0f);
+                }
+                else if (targetStructure != null)
+                {
+                    attack.DoDamage(user, targetStructure, item.WorldPosition, 1.0f);
+                }
+                else
+                {
+                    return false;
+                }
             }
-
-            if (target == null) return false;
-
-            if (attack != null) attack.DoDamage(user, target, item.WorldPosition, 1.0f);
 
             RestoreCollision();
             hitting = false;
 
             if (GameMain.Client != null) return true;
 
-            if (GameMain.Server != null)
+            if (GameMain.Server != null && targetCharacter != null) //TODO: Log structure hits
             {
-                GameMain.Server.CreateEntityEvent(item, new object[] { Networking.NetEntityEvent.Type.ApplyStatusEffect, ActionType.OnUse, target.ID });
+                GameMain.Server.CreateEntityEvent(item, new object[] { Networking.NetEntityEvent.Type.ApplyStatusEffect, ActionType.OnUse, targetCharacter.ID });
 
-                string logStr = picker?.Name + " used " + item.Name;
+                string logStr = picker?.LogName + " used " + item.Name;
                 if (item.ContainedItems != null && item.ContainedItems.Length > 0)
                 {
                     logStr += "(" + string.Join(", ", item.ContainedItems.Select(i => i?.Name)) + ")";
                 }
-                logStr += " on " + target + ".";
+                logStr += " on " + targetCharacter.LogName + ".";
                 Networking.GameServer.Log(logStr, Networking.ServerLog.MessageType.Attack);
             }
+            
+            if (targetCharacter != null) //TODO: Allow OnUse to happen on structures too maybe??
+                ApplyStatusEffects(ActionType.OnUse, 1.0f, targetCharacter != null ? targetCharacter : null);
 
-            ApplyStatusEffects(ActionType.OnUse, 1.0f, limb.character);
+            if (DeleteOnUse)
+            {
+                Entity.Spawner.AddToRemoveQueue(item);
+            }
 
             return true;
         }

@@ -6,9 +6,9 @@ namespace Barotrauma
 {
     public class GUIDropDown : GUIComponent
     {
-
         public delegate bool OnSelectedHandler(GUIComponent selected, object obj = null);
         public OnSelectedHandler OnSelected;
+        public OnSelectedHandler OnDropped;
 
         private GUIButton button;
         private GUIListBox listBox;
@@ -70,17 +70,40 @@ namespace Barotrauma
                 listBox.ToolTip = value;
             }
         }
-        
+
+
+        public override Rectangle Rect
+        {
+            get
+            {
+                return base.Rect;
+            }
+
+            set
+            {
+                Point moveAmount = value.Location - rect.Location;
+                base.Rect = value;
+
+                button.Rect = new Rectangle(button.Rect.Location + moveAmount, button.Rect.Size);
+                listBox.Rect = new Rectangle(listBox.Rect.Location + moveAmount, listBox.Rect.Size);
+            }
+        }
+
         public GUIDropDown(Rectangle rect, string text, string style, GUIComponent parent = null)
+            : this(rect, text, style, Alignment.TopLeft, parent)
+        {
+        }
+
+        public GUIDropDown(Rectangle rect, string text, string style, Alignment alignment, GUIComponent parent = null)
             : base(style)
         {
             this.rect = rect;
 
             if (parent != null) parent.AddChild(this);
 
-            button = new GUIButton(this.rect, text, Color.White, Alignment.TopLeft, Alignment.CenterLeft, "GUIDropDown", null);
+            button = new GUIButton(this.rect, text, Color.White, alignment, Alignment.CenterLeft, "GUIDropDown", null);
             GUI.Style.Apply(button, style, this);
-            
+
             button.OnClicked = OnClicked;
 
             listBox = new GUIListBox(new Rectangle(this.rect.X, this.rect.Bottom, this.rect.Width, 200), style, null);
@@ -92,10 +115,11 @@ namespace Barotrauma
             listBox.AddChild(child);
         }
 
-        public void AddItem(string text, object userData = null)
+        public void AddItem(string text, object userData = null, string toolTip = "")
         {
             GUITextBlock textBlock = new GUITextBlock(new Rectangle(0,0,0,20), text, "ListBoxElement", Alignment.TopLeft, Alignment.CenterLeft, listBox);
             textBlock.UserData = userData;
+            textBlock.ToolTip = toolTip;
         }
 
         public override void ClearChildren()
@@ -111,9 +135,13 @@ namespace Barotrauma
         private bool SelectItem(GUIComponent component, object obj)
         {
             GUITextBlock textBlock = component as GUITextBlock;
-            if (textBlock==null) return false;
-            button.Text = textBlock.Text;
+            if (textBlock == null)
+            {
+                textBlock = component.GetChild<GUITextBlock>();
+                if (textBlock == null) return false;
+            }
 
+            button.Text = textBlock.Text;
             Dropped = false;
 
             if (OnSelected != null) OnSelected(component, component.UserData);
@@ -142,15 +170,19 @@ namespace Barotrauma
 
         private bool OnClicked(GUIComponent component, object obj)
         {
-            if (wasOpened || !Enabled) return false;
+            if (wasOpened) return false;
             
             wasOpened = true;
             Dropped = !Dropped;
 
-            if (Dropped && parent.children[parent.children.Count-1]!=this)
+            if (Dropped)
             {
-                parent.children.Remove(this);
-                parent.children.Add(this);
+                if (Enabled) OnDropped?.Invoke(this, userData);
+                if (parent.children[parent.children.Count - 1] != this)
+                {
+                    parent.children.Remove(this);
+                    parent.children.Add(this);
+                }
             }
 
             return true;
@@ -195,7 +227,6 @@ namespace Barotrauma
             button.Draw(spriteBatch);
 
             if (!Dropped) return;
-
             listBox.Draw(spriteBatch);
         }
     }

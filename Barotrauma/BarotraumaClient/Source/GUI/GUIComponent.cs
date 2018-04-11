@@ -1,4 +1,4 @@
-﻿using EventInput;
+using EventInput;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -28,19 +28,11 @@ namespace Barotrauma
             if (!Visible) return;
             if (ComponentsToUpdate.Contains(this)) return;
             ComponentsToUpdate.Add(this);
-
-            try
+            
+            List<GUIComponent> fixedChildren = new List<GUIComponent>(children);
+            foreach (GUIComponent c in fixedChildren)
             {
-                List<GUIComponent> fixedChildren = new List<GUIComponent>(children);
-                foreach (GUIComponent c in fixedChildren)
-                {
-                    c.AddToGUIUpdateList();
-                }
-            }
-            catch (Exception e)
-            {
-                DebugConsole.NewMessage("Error in AddToGUIUPdateList! GUIComponent runtime type: "+this.GetType().ToString()+"; children count: "+children.Count.ToString(),Color.Red);
-                throw;
+                c.AddToGUIUpdateList();
             }
         }
 
@@ -59,7 +51,7 @@ namespace Barotrauma
         public static GUIComponent UpdateMouseOn()
         {
             MouseOn = null;
-            for (int i=ComponentsToUpdate.Count-1;i>=0;i--)
+            for (int i = ComponentsToUpdate.Count - 1; i >= 0; i--)
             {
                 GUIComponent c = ComponentsToUpdate[i];
                 if (c.MouseRect.Contains(PlayerInput.MousePosition))
@@ -137,7 +129,38 @@ namespace Barotrauma
         {
             get { return new Vector2(rect.Center.X, rect.Center.Y); }
         }
-                
+
+        protected Rectangle ClampRect(Rectangle r)
+        {
+            if (parent == null || !ClampMouseRectToParent) return r;
+            Rectangle parentRect = parent.ClampRect(parent.rect);
+            if (parentRect.Width <= 0 || parentRect.Height <= 0) return Rectangle.Empty;
+            if (parentRect.X > r.X)
+            {
+                int diff = parentRect.X - r.X;
+                r.X = parentRect.X;
+                r.Width -= diff;
+            }
+            if (parentRect.Y > r.Y)
+            {
+                int diff = parentRect.Y - r.Y;
+                r.Y = parentRect.Y;
+                r.Height -= diff;
+            }
+            if (parentRect.X + parentRect.Width < r.X + r.Width)
+            {
+                int diff = (r.X + r.Width) - (parentRect.X + parentRect.Width);
+                r.Width -= diff;
+            }
+            if (parentRect.Y + parentRect.Height < r.Y + r.Height)
+            {
+                int diff = (r.Y + r.Height) - (parentRect.Y + parentRect.Height);
+                r.Height -= diff;
+            }
+            if (r.Width <= 0 || r.Height <= 0) return Rectangle.Empty;
+            return r;
+        }
+
         public virtual Rectangle Rect
         {
             get { return rect; }
@@ -149,7 +172,9 @@ namespace Barotrauma
                 rect = value;
 
                 if (prevX == rect.X && prevY == rect.Y && rect.Width == prevWidth && rect.Height == prevHeight) return;
-                
+
+                //TODO: fix this (or replace with something better in the new GUI system)
+                //simply expanding the rects by the same amount as their parent only works correctly in some special cases
                 foreach (GUIComponent child in children)
                 {
                     child.Rect = new Rectangle(
@@ -157,18 +182,26 @@ namespace Barotrauma
                         child.rect.Y + (rect.Y - prevY),
                         Math.Max(child.rect.Width + (rect.Width - prevWidth),0),
                         Math.Max(child.rect.Height + (rect.Height - prevHeight),0));
-                }                
+                }    
+                
+                if (parent != null && parent is GUIListBox)
+                {
+                    ((GUIListBox)parent).UpdateScrollBarSize();
+                }            
             }
         }
-        
+
+        public bool ClampMouseRectToParent = true;
         public virtual Rectangle MouseRect
         {
-            get { return CanBeFocused ? rect : Rectangle.Empty; }
+            get
+            {
+                if (!CanBeFocused) return Rectangle.Empty;
+                return ClampMouseRectToParent ? ClampRect(rect) : rect;
+            }
         }
 
-        public Dictionary<GUIComponent.ComponentState, List<UISprite>> sprites;
-        //public Alignment SpriteAlignment { get; set; }
-        //public bool RepeatSpriteX, RepeatSpriteY;
+        public Dictionary<ComponentState, List<UISprite>> sprites;
 
         public virtual Color OutlineColor { get; set; }
 
@@ -271,15 +304,44 @@ namespace Barotrauma
             return false;
         }
 
+        protected virtual void SetAlpha(float a)
+        {
+            color = new Color(color.R / 255.0f, color.G / 255.0f, color.B / 255.0f, a);
+        }
+
         public virtual void Flash(Color? color = null)
         {
             flashTimer = FlashDuration;
             flashColor = (color == null) ? Color.Red * 0.8f : (Color)color;
+        }
 
-            //foreach (GUIComponent child in children)
-            //{
-            //    child.Flash();
-            //}
+        public void FadeOut(float duration, bool removeAfter)
+        {
+            CoroutineManager.StartCoroutine(LerpAlpha(0.0f, duration, removeAfter));
+        }
+
+        private IEnumerable<object> LerpAlpha(float to, float duration, bool removeAfter)
+        {
+            float t = 0.0f;
+            float startA = color.A;
+
+            while (t < duration)
+            {
+                t += CoroutineManager.DeltaTime;
+
+                SetAlpha(MathHelper.Lerp(startA, to, t / duration));
+
+                yield return CoroutineStatus.Running;
+            }
+
+            SetAlpha(to);
+
+            if (removeAfter && parent != null)
+            {
+                parent.RemoveChild(this);
+            }
+
+            yield return CoroutineStatus.Success;
         }
 
         public virtual void Draw(SpriteBatch spriteBatch) 
@@ -340,7 +402,7 @@ namespace Barotrauma
                         if (uiSprite.Sprite.size.X == 0.0f) size.X = rect.Width;
                         if (uiSprite.Sprite.size.Y == 0.0f) size.Y = rect.Height;
 
-                        uiSprite.Sprite.DrawTiled(spriteBatch, startPos, size, currColor * (currColor.A / 255.0f));
+                        uiSprite.Sprite.DrawTiled(spriteBatch, startPos, size, color: currColor * (currColor.A / 255.0f));
                     }
                     else
                     {
@@ -356,18 +418,9 @@ namespace Barotrauma
                         {
                             spriteBatch.Draw(uiSprite.Sprite.Texture, rect, uiSprite.Sprite.SourceRect, currColor * (currColor.A / 255.0f));
                         }
-
-
                     }
                 }
             }
-
-            //Color newColor = color;
-            //if (state == ComponentState.Selected)   newColor = selectedColor;
-            //if (state == ComponentState.Hover)      newColor = hoverColor;
-
-            //GUI.DrawRectangle(spriteBatch, rect, newColor*alpha, true);
-            //DrawChildren(spriteBatch);
         }
 
         public  void DrawToolTip(SpriteBatch spriteBatch)
@@ -412,32 +465,45 @@ namespace Barotrauma
                 }
 
             }*/
-
-            try
+            
+            //use a fixed list since children can change their order in the main children list
+            //TODO: maybe find a more efficient way of handling changes in list order
+            List<GUIComponent> fixedChildren = new List<GUIComponent>(children);
+            foreach (GUIComponent c in fixedChildren)
             {
-                //use a fixed list since children can change their order in the main children list
-                //TODO: maybe find a more efficient way of handling changes in list order
-                List<GUIComponent> fixedChildren = new List<GUIComponent>(children);
-                foreach (GUIComponent c in fixedChildren)
-                {
-                    if (!c.Visible) continue;
-                    c.Update(deltaTime);
-                }
+                if (!c.Visible) continue;
+                c.Update(deltaTime);
             }
-            catch (Exception e)
+        }
+
+        public virtual void SetDimensions(Point size, bool expandChildren = false)
+        {
+            Point expandAmount = size - rect.Size;
+
+            rect = new Rectangle(rect.X, rect.Y, size.X, size.Y);
+
+            if (expandChildren)
             {
-                DebugConsole.NewMessage("Error in Update! GUIComponent runtime type: " + this.GetType().ToString() + "; children count: " + children.Count.ToString(), Color.Red);
-                throw;
+                //TODO: fix this (or replace with something better in the new GUI system)
+                //simply expanding the rects by the same amount as their parent only works correctly in some special cases
+                foreach (GUIComponent child in children)
+                {
+                    child.Rect = new Rectangle(
+                        child.rect.X,
+                        child.rect.Y,
+                        child.rect.Width + expandAmount.X,
+                        child.rect.Height + expandAmount.Y);
+                }
             }
         }
 
         protected virtual void UpdateDimensions(GUIComponent parent = null)
         {
-            Rectangle parentRect = (parent==null) ? new Rectangle(0,0,GameMain.GraphicsWidth, GameMain.GraphicsHeight) : parent.rect;
+            Rectangle parentRect = (parent == null) ? new Rectangle(0, 0, GameMain.GraphicsWidth, GameMain.GraphicsHeight) : parent.rect;
 
             Vector4 padding = (parent == null) ? Vector4.Zero : parent.padding;
 
-            if (rect.Width == 0) rect.Width = parentRect.Width - rect.X 
+            if (rect.Width == 0) rect.Width = parentRect.Width - rect.X
                 - (int)padding.X - (int)padding.Z;
 
             if (rect.Height == 0) rect.Height = parentRect.Height - rect.Y
@@ -445,7 +511,7 @@ namespace Barotrauma
 
             if (alignment.HasFlag(Alignment.CenterX))
             {
-                rect.X += parentRect.X + (int)parentRect.Width/2 - (int)rect.Width/2;
+                rect.X += parentRect.X + (int)parentRect.Width / 2 - (int)rect.Width / 2;
             }
             else if (alignment.HasFlag(Alignment.Right))
             {

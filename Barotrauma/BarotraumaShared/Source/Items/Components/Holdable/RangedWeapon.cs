@@ -13,28 +13,28 @@ namespace Barotrauma.Items.Components
 
         private Vector2 barrelPos;
 
-        [HasDefaultValue("0.0,0.0", false)]
+        [Serialize("0.0,0.0", false)]
         public string BarrelPos
         {
             get { return XMLExtensions.Vector2ToString(ConvertUnits.ToDisplayUnits(barrelPos)); }
-            set { barrelPos = ConvertUnits.ToSimUnits(XMLExtensions.ParseToVector2(value)); }
+            set { barrelPos = ConvertUnits.ToSimUnits(XMLExtensions.ParseVector2(value)); }
         }
 
-        [HasDefaultValue(1.0f, false)]
+        [Serialize(1.0f, false)]
         public float Reload
         {
             get { return reload; }
             set { reload = Math.Max(value, 0.0f); }
         }
 
-        [HasDefaultValue(0.0f, false)]
+        [Serialize(0.0f, false)]
         public float Spread
         {
             get;
             set;
         }
 
-        [HasDefaultValue(0.0f, false)]
+        [Serialize(0.0f, false)]
         public float UnskilledSpread
         {
             get;
@@ -70,7 +70,7 @@ namespace Barotrauma.Items.Components
         
         public override bool Use(float deltaTime, Character character = null)
         {
-            if (character == null) return false;
+            if (character == null || character.Removed) return false;
             if (!character.IsKeyDown(InputType.Aim) || reloadTimer > 0.0f) return false;
             IsActive = true;
             reloadTimer = reload;
@@ -81,7 +81,7 @@ namespace Barotrauma.Items.Components
                 limbBodies.Add(l.body.FarseerBody);
             }
 
-            float degreeOfFailure = (100.0f - DegreeOfSuccess(character))/100.0f;
+            float degreeOfFailure = (100.0f - DegreeOfSuccess(character)) / 100.0f;
 
             degreeOfFailure *= degreeOfFailure;
 
@@ -108,10 +108,11 @@ namespace Barotrauma.Items.Components
                 
                     projectile.body.ResetDynamics();
                     projectile.SetTransform(TransformedBarrelPos, rotation);
+
                     projectileComponent.User = character;
                     projectileComponent.IgnoredBodies = new List<Body>(limbBodies);
-
                     projectile.Use(deltaTime);
+                    projectileComponent.User = character;
 
                     projectile.body.ApplyTorque(projectile.body.Mass * degreeOfFailure * Rand.Range(-10.0f, 10.0f));
 

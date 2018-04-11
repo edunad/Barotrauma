@@ -69,7 +69,10 @@ namespace Barotrauma.Networking
                     textBox.TextColor = ChatMessage.MessageColor[(int)ChatMessageType.Dead];
                     break;
                 default:
-                    textBox.TextColor = ChatMessage.MessageColor[(int)ChatMessageType.Default];
+                    if (command != "") //PMing
+                        textBox.TextColor = ChatMessage.MessageColor[(int)ChatMessageType.Private];
+                    else
+                        textBox.TextColor = ChatMessage.MessageColor[(int)ChatMessageType.Default];
                     break;
             }
 
@@ -80,7 +83,11 @@ namespace Barotrauma.Networking
         {
             textBox.TextColor = ChatMessage.MessageColor[(int)ChatMessageType.Default];
 
-            if (string.IsNullOrWhiteSpace(message)) return false;
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                if (textBox == chatMsgBox) textBox.Deselect();
+                return false;
+            }
 
             if (this == GameMain.Server)
             {
@@ -106,7 +113,7 @@ namespace Barotrauma.Networking
 
         public virtual void Draw(Microsoft.Xna.Framework.Graphics.SpriteBatch spriteBatch)
         {
-            if (!gameStarted || Screen.Selected != GameMain.GameScreen) return;
+            if (!gameStarted || Screen.Selected != GameMain.GameScreen || GUI.DisableHUD) return;
 
             GameMain.GameSession.CrewManager.Draw(spriteBatch);
 
@@ -133,8 +140,8 @@ namespace Barotrauma.Networking
                 if (respawnManager.CurrentState == RespawnManager.State.Waiting &&
                     respawnManager.CountdownStarted)
                 {
-                    respawnInfo = respawnManager.RespawnTimer <= 0.0f ? "" : "Respawn Shuttle dispatching in " + ToolBox.SecondsToReadableTime(respawnManager.RespawnTimer);
-
+                    respawnInfo = respawnManager.UsingShuttle ? "Respawn Shuttle dispatching in " : "Respawning players in ";
+                    respawnInfo = respawnManager.RespawnTimer <= 0.0f ? "" : respawnInfo + ToolBox.SecondsToReadableTime(respawnManager.RespawnTimer);
                 }
                 else if (respawnManager.CurrentState == RespawnManager.State.Transporting)
                 {
@@ -182,10 +189,14 @@ namespace Barotrauma.Networking
                 };
                 
                 new GUITextBlock(new Rectangle(0, 0, 30, 20), "Days:", "", Alignment.TopLeft, Alignment.CenterLeft, durationContainer);
-                durationInputDays = new GUINumberInput(new Rectangle(40, 0, 50, 20), "", 0, 1000, durationContainer);
+                durationInputDays = new GUINumberInput(new Rectangle(40, 0, 50, 20), "", GUINumberInput.NumberType.Int, durationContainer);
+                durationInputDays.MinValueInt = 0;
+                durationInputDays.MaxValueFloat = 1000;
 
                 new GUITextBlock(new Rectangle(100, 0, 30, 20), "Hours:", "", Alignment.TopLeft, Alignment.CenterLeft, durationContainer);
-                durationInputHours = new GUINumberInput(new Rectangle(150, 0, 50, 20), "", 0, 24, durationContainer);
+                durationInputHours = new GUINumberInput(new Rectangle(150, 0, 50, 20), "", GUINumberInput.NumberType.Int, durationContainer);
+                durationInputDays.MinValueInt = 0;
+                durationInputDays.MaxValueFloat = 24;
             }
 
             banReasonPrompt.Buttons[0].OnClicked += (btn, userData) =>
@@ -194,7 +205,7 @@ namespace Barotrauma.Networking
                 {
                     if (!permaBanTickBox.Selected)
                     {
-                        TimeSpan banDuration = new TimeSpan(durationInputDays.Value, durationInputHours.Value, 0, 0);
+                        TimeSpan banDuration = new TimeSpan(durationInputDays.IntValue, durationInputHours.IntValue, 0, 0);
                         BanPlayer(clientName, banReasonBox.Text, ban, banDuration);
                     }
                     else

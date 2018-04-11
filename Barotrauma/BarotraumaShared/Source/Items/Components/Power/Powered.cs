@@ -18,14 +18,16 @@ namespace Barotrauma.Items.Components
         //the maximum amount of power the item can draw from connected items
         protected float powerConsumption;
 
-        [Editable, HasDefaultValue(0.5f, true)]
+        [Serialize(0.5f, true), Editable(ToolTip = "The minimum voltage required for the device to function. "+
+            "The voltage is calculated as power / powerconsumption, meaning that a device "+
+            "with a power consumption of 1000 kW would need at least 500 kW of power to work if the minimum voltage is set to 0.5.")]
         public float MinVoltage
         {
             get { return minVoltage; }
             set { minVoltage = value; }
         }
 
-        [Editable, HasDefaultValue(0.0f, true)]
+        [Editable(ToolTip = "How much power the device draws (or attempts to draw) from the electrical grid."), Serialize(0.0f, true)]
         public float PowerConsumption
         {
             get { return powerConsumption; }
@@ -33,25 +35,25 @@ namespace Barotrauma.Items.Components
         }
 
 
-        [HasDefaultValue(false,true)]
+        [Serialize(false, true)]
         public override bool IsActive
         {
             get { return base.IsActive; }
-            set 
-            { 
+            set
+            {
                 base.IsActive = value;
                 if (!value) currPowerConsumption = 0.0f;
             }
         }
 
-        [HasDefaultValue(0.0f, true)]
+        [Serialize(0.0f, true)]
         public float CurrPowerConsumption
         {
             get {return currPowerConsumption; }
             set { currPowerConsumption = value; }
         }
 
-        [HasDefaultValue(0.0f, true)]
+        [Serialize(0.0f, true)]
         public float Voltage
         {
             get { return voltage; }
@@ -84,9 +86,18 @@ namespace Barotrauma.Items.Components
             if (connection.IsPower) voltage = power;                
         }
 
-        public override void Update(float deltaTime, Camera cam)
+        protected void UpdateOnActiveEffects(float deltaTime)
         {
-            if (currPowerConsumption == 0.0f) return;
+            if (currPowerConsumption == 0.0f)
+            {
+                //if the item consumes no power, ignore the voltage requirement and
+                //apply OnActive statuseffects as long as this component is active
+                if (powerConsumption == 0.0f)
+                {
+                    ApplyStatusEffects(ActionType.OnActive, deltaTime, null);
+                }
+                return;
+            }
 
 #if CLIENT
             if (voltage > minVoltage)
@@ -98,7 +109,7 @@ namespace Barotrauma.Items.Components
                     powerOnSoundPlayed = true;
                 }
             }
-            else if (voltage < 0.1f)            
+            else if (voltage < 0.1f)
             {
                 powerOnSoundPlayed = false;
             }
@@ -108,6 +119,13 @@ namespace Barotrauma.Items.Components
                 ApplyStatusEffects(ActionType.OnActive, deltaTime, null);
             }
 #endif
+        }
+
+        public override void Update(float deltaTime, Camera cam)
+        {
+            UpdateOnActiveEffects(deltaTime);
+
+            voltage = 0.0f;
         }
 
 

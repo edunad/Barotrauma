@@ -83,7 +83,23 @@ namespace Barotrauma
             set
             {
                 enabled = value;
-                scrollBar.Enabled = value;
+                //scrollBar.Enabled = value;
+            }
+        }
+
+        public override Rectangle Rect
+        {
+            get
+            {
+                return rect;
+            }
+            set
+            {
+                base.Rect = value;
+                frame.Rect = value;
+                scrollBar.Rect = scrollBar.IsHorizontal ?
+                    new Rectangle(rect.X, rect.Bottom - 20, rect.Width, 20) :
+                    new Rectangle(rect.Right - 20, rect.Y, 20, rect.Height);            
             }
         }
 
@@ -171,13 +187,30 @@ namespace Barotrauma
         {
             for (int i = 0; i < children.Count; i++)
             {
-                if (!children[i].UserData.Equals(userData)) continue;
-
-                Select(i, force);
-
-                //if (OnSelected != null) OnSelected(Selected, Selected.UserData);
-                if (!SelectMultiple) return;
+                if ((children[i].UserData != null && children[i].UserData.Equals(userData)) ||
+                    (children[i].UserData == null && userData == null))
+                {
+                    Select(i, force);
+                    if (!SelectMultiple) return;
+                }
             }
+        }
+
+        public override void SetDimensions(Point size, bool expandChildren = false)
+        {
+            base.SetDimensions(size, expandChildren);
+            frame.SetDimensions(size, expandChildren);
+
+            if (scrollBar.IsHorizontal)
+            {
+                scrollBar.Rect = new Rectangle(this.rect.X, this.rect.Bottom - 20, this.rect.Width, 20);
+            }
+            else
+            {
+                scrollBar.Rect = new Rectangle(this.rect.Right - 20, this.rect.Y, 20, this.rect.Height);
+            }
+
+            UpdateScrollBarSize();
         }
 
         private void UpdateChildrenRect(float deltaTime)
@@ -242,29 +275,21 @@ namespace Barotrauma
             if (!Visible) return;
             if (ComponentsToUpdate.Contains(this)) return;
             ComponentsToUpdate.Add(this);
-
-            try
+            
+            List<GUIComponent> fixedChildren = new List<GUIComponent>(children);
+            int lastVisible = 0;
+            for (int i = 0; i < fixedChildren.Count; i++)
             {
-                List<GUIComponent> fixedChildren = new List<GUIComponent>(children);
-                int lastVisible = 0;
-                for (int i = 0; i < fixedChildren.Count; i++)
+                if (fixedChildren[i] == frame) continue;
+
+                if (!IsChildVisible(fixedChildren[i]))
                 {
-                    if (fixedChildren[i] == frame) continue;
-
-                    if (!IsChildVisible(fixedChildren[i]))
-                    {
-                        if (lastVisible > 0) break;
-                        continue;
-                    }
-
-                    lastVisible = i;
-                    fixedChildren[i].AddToGUIUpdateList();
+                    if (lastVisible > 0) break;
+                    continue;
                 }
-            }
-            catch (Exception e)
-            {
-                DebugConsole.NewMessage("Error in AddToGUIUpdateList! GUIComponent runtime type: " + this.GetType().ToString() + "; children count: " + children.Count.ToString(), Color.Red);
-                throw;
+
+                lastVisible = i;
+                fixedChildren[i].AddToGUIUpdateList();
             }
 
             if (scrollBarEnabled && !scrollBarHidden) scrollBar.AddToGUIUpdateList();
@@ -274,7 +299,7 @@ namespace Barotrauma
         {
             get
             {
-                return rect;
+                return ClampMouseRectToParent ? ClampRect(rect) : rect;
             }
         }
 
@@ -284,8 +309,6 @@ namespace Barotrauma
 
             UpdateChildrenRect(deltaTime);
             
-            if (!enabled) return;
-
             if (scrollBarEnabled && !scrollBarHidden) scrollBar.Update(deltaTime);
 
             if ((MouseOn == this || MouseOn == scrollBar || IsParentOf(MouseOn)) && PlayerInput.ScrollWheelSpeed != 0)
@@ -329,13 +352,14 @@ namespace Barotrauma
 
         public void UpdateScrollBarSize()
         {
-            totalSize = 0;
+            totalSize = (int)(padding.Y + padding.W);
             foreach (GUIComponent child in children)
             {
-                if (child == frame) continue;
+                if (child == frame || !child.Visible) continue;
                 totalSize += (scrollBar.IsHorizontal) ? child.Rect.Width : child.Rect.Height;
-                totalSize += spacing;
             }
+
+            totalSize += (children.Count - 1) * spacing;
 
             scrollBar.BarSize = scrollBar.IsHorizontal ?
                 Math.Max(Math.Min((float)rect.Width / (float)totalSize, 1.0f), 5.0f / rect.Width) :
@@ -371,10 +395,10 @@ namespace Barotrauma
 
         public override void RemoveChild(GUIComponent child)
         {
+            if (child == null) return;
+
             base.RemoveChild(child);
-
             if (selected.Contains(child)) selected.Remove(child);
-
             UpdateScrollBarSize();
         }
         
@@ -387,7 +411,9 @@ namespace Barotrauma
             if (!scrollBarHidden) scrollBar.Draw(spriteBatch);
 
             Rectangle prevScissorRect = spriteBatch.GraphicsDevice.ScissorRectangle;
-            spriteBatch.GraphicsDevice.ScissorRectangle = frame.Rect;
+            spriteBatch.GraphicsDevice.ScissorRectangle = Rectangle.Intersect(prevScissorRect, frame.Rect);
+
+            
 
             int lastVisible = 0;
             for (int i = 0; i < children.Count; i++)

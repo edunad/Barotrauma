@@ -1,4 +1,4 @@
-﻿using Barotrauma.Networking;
+using Barotrauma.Networking;
 using Barotrauma.Particles;
 using FarseerPhysics;
 using FarseerPhysics.Dynamics;
@@ -11,10 +11,14 @@ using System.Xml.Linq;
 
 namespace Barotrauma
 {
-    partial class Character : Entity, IDamageable, IPropertyObject, IClientSerializable, IServerSerializable
+    partial class Character : Entity, IDamageable, ISerializableEntity, IClientSerializable, IServerSerializable
     {
         protected float soundTimer;
         protected float soundInterval;
+        protected float hudInfoTimer;
+        protected bool hudInfoVisible;
+
+        float hudInfoHeight;
 
         private List<CharacterSound> sounds;
 
@@ -119,18 +123,24 @@ namespace Barotrauma
             }
 
             Vector2 mouseSimPos = ConvertUnits.ToSimUnits(cursorPosition);
-
-            if (Lights.LightManager.ViewTarget == this && Vector2.DistanceSquared(AnimController.Limbs[0].SimPosition, mouseSimPos) > 1.0f)
+            if (moveCam)
             {
-                Body body = Submarine.PickBody(AnimController.Limbs[0].SimPosition, mouseSimPos);
-                Structure structure = null;
-                if (body != null) structure = body.UserData as Structure;
-                if (structure != null)
+                if (DebugConsole.IsOpen || GUI.PauseMenuOpen || IsUnconscious ||
+                    (GameMain.GameSession?.CrewManager?.CrewCommander != null && GameMain.GameSession.CrewManager.CrewCommander.IsOpen))
                 {
-                    if (!structure.CastShadow && moveCam)
+                    if (deltaTime > 0.0f) cam.OffsetAmount = 0.0f;
+                }
+                else if (Lights.LightManager.ViewTarget == this && Vector2.DistanceSquared(AnimController.Limbs[0].SimPosition, mouseSimPos) > 1.0f)
+                {
+                    Body body = Submarine.CheckVisibility(AnimController.Limbs[0].SimPosition, mouseSimPos);
+                    Structure structure = body == null ? null : body.UserData as Structure;
+
+                    float sightDist = Submarine.LastPickedFraction;
+                    if (body?.UserData is Structure && !((Structure)body.UserData).CastShadow)
                     {
-                        cam.OffsetAmount = MathHelper.Lerp(cam.OffsetAmount, 500.0f, 0.05f);
+                        sightDist = 1.0f;
                     }
+                    cam.OffsetAmount = MathHelper.Lerp(cam.OffsetAmount, Math.Max(250.0f, sightDist * 500.0f), 0.05f);
                 }
             }
 
@@ -174,10 +184,10 @@ namespace Barotrauma
 
         partial void KillProjSpecific()
         {
-            if (GameMain.NetworkMember != null && Character.controlled == this)
+            if (GameMain.NetworkMember != null && controlled == this)
             {
-                string chatMessage = InfoTextManager.GetInfoText("Self_CauseOfDeath." + causeOfDeath.ToString());
-                if (GameMain.Client != null) chatMessage += " Your chat messages will only be visible to other dead players.";
+                string chatMessage = TextManager.Get("Self_CauseOfDeathDescription." + causeOfDeath.ToString());
+                if (GameMain.Client != null) chatMessage += " " + TextManager.Get("DeathChatNotification");
 
                 GameMain.NetworkMember.AddChatMessage(chatMessage, ChatMessageType.Dead);
                 GameMain.LightManager.LosEnabled = false;
@@ -192,14 +202,42 @@ namespace Barotrauma
             if (controlled == this) controlled = null;
 
             if (GameMain.GameSession?.CrewManager != null &&
-                GameMain.GameSession.CrewManager.characters.Contains(this))
+                GameMain.GameSession.CrewManager.GetCharacters().Contains(this))
             {
-                GameMain.GameSession.CrewManager.characters.Remove(this);
+                GameMain.GameSession.CrewManager.RemoveCharacter(this);
             }
 
             if (GameMain.Client != null && GameMain.Client.Character == this) GameMain.Client.Character = null;
 
             if (Lights.LightManager.ViewTarget == this) Lights.LightManager.ViewTarget = null;
+        }
+
+        partial void UpdateProjSpecific(float deltaTime, Camera cam)
+        {
+            if (info != null || health < maxHealth * 0.98f)
+            {
+                hudInfoTimer -= deltaTime;
+                if (hudInfoTimer <= 0.0f)
+                {
+                    if (controlled == null)
+                    {
+                        hudInfoVisible = true;
+                    }
+
+                    //if the character is not in the camera view, the name can't be visible and we can avoid the expensive visibility checks
+                    else if (WorldPosition.X < cam.WorldView.X || WorldPosition.X > cam.WorldView.Right || 
+                            WorldPosition.Y > cam.WorldView.Y || WorldPosition.Y < cam.WorldView.Y - cam.WorldView.Height)
+                    {
+                        hudInfoVisible = false;
+                    }
+                    else
+                    {
+                        //Ideally it shouldn't send the character entirely if we can't see them but /shrug, this isn't the most hacker-proof game atm
+                        hudInfoVisible = controlled.CanSeeCharacter(this);                    
+                    }
+                    hudInfoTimer = Rand.Range(0.5f, 1.0f);
+                }
+            }
         }
 
         public static void AddAllToGUIUpdateList()
@@ -240,73 +278,61 @@ namespace Barotrauma
 
                 if (aiTarget != null) aiTarget.Draw(spriteBatch);
             }
-
-            /*if (memPos != null && memPos.Count > 0 && controlled == this)
-            {
-                PosInfo serverPos = memPos.Last();
-                Vector2 remoteVec = ConvertUnits.ToDisplayUnits(serverPos.Position);
-                if (Submarine != null)
-                {
-                    remoteVec += Submarine.DrawPosition;
-                }
-                remoteVec.Y = -remoteVec.Y;
-
-                PosInfo localPos = memLocalPos.Find(m => m.ID == serverPos.ID);
-                int mpind = memLocalPos.FindIndex(lp => lp.ID == localPos.ID);
-                PosInfo localPos1 = mpind > 0 ? memLocalPos[mpind - 1] : null;
-                PosInfo localPos2 = mpind < memLocalPos.Count-1 ? memLocalPos[mpind + 1] : null;
-
-                Vector2 localVec = ConvertUnits.ToDisplayUnits(localPos.Position);
-                Vector2 localVec1 = localPos1 != null ? ConvertUnits.ToDisplayUnits(((PosInfo)localPos1).Position) : Vector2.Zero;
-                Vector2 localVec2 = localPos2 != null ? ConvertUnits.ToDisplayUnits(((PosInfo)localPos2).Position) : Vector2.Zero;
-                if (Submarine != null)
-                {
-                    localVec += Submarine.DrawPosition;
-                    localVec1 += Submarine.DrawPosition;
-                    localVec2 += Submarine.DrawPosition;
-                }
-                localVec.Y = -localVec.Y;
-                localVec1.Y = -localVec1.Y;
-                localVec2.Y = -localVec2.Y;
-
-                //GUI.DrawLine(spriteBatch, remoteVec, localVec, Color.Yellow, 0, 10);
-                if (localPos1 != null) GUI.DrawLine(spriteBatch, remoteVec, localVec1, Color.Lime, 0, 2);
-                if (localPos2 != null) GUI.DrawLine(spriteBatch, remoteVec + Vector2.One, localVec2 + Vector2.One, Color.Red, 0, 2);
-            }
-
-            Vector2 mouseDrawPos = CursorWorldPosition;
-            mouseDrawPos.Y = -mouseDrawPos.Y;
-            GUI.DrawLine(spriteBatch, mouseDrawPos - new Vector2(0, 5), mouseDrawPos + new Vector2(0, 5), Color.Red, 0, 10);
-
-            Vector2 closestItemPos = closestItem != null ? closestItem.DrawPosition : Vector2.Zero;
-            closestItemPos.Y = -closestItemPos.Y;
-            GUI.DrawLine(spriteBatch, closestItemPos - new Vector2(0, 5), closestItemPos + new Vector2(0, 5), Color.Lime, 0, 10);*/
-
-            if (this == controlled || GUI.DisableHUD) return;
+            
+            if (GUI.DisableHUD) return;
 
             Vector2 pos = DrawPosition;
+            pos.Y += hudInfoHeight;
+
+            if (CurrentHull != null && DrawPosition.Y > CurrentHull.WorldRect.Y - 130.0f)
+            {
+                float lowerAmount = DrawPosition.Y - (CurrentHull.WorldRect.Y - 130.0f);
+                hudInfoHeight = MathHelper.Lerp(hudInfoHeight, 100.0f - lowerAmount, 0.1f);
+                hudInfoHeight = Math.Max(hudInfoHeight, 20.0f);
+            }
+            else
+            {
+                hudInfoHeight = MathHelper.Lerp(hudInfoHeight, 100.0f, 0.1f);
+            }
+
             pos.Y = -pos.Y;
 
             if (speechBubbleTimer > 0.0f)
             {
                 GUI.SpeechBubbleIcon.Draw(spriteBatch, pos - Vector2.UnitY * 100.0f,
                     speechBubbleColor * Math.Min(speechBubbleTimer, 1.0f), 0.0f,
-                    Math.Min((float)speechBubbleTimer, 1.0f));
+                    Math.Min(speechBubbleTimer, 1.0f));
             }
 
             if (this == controlled) return;
 
-            if (info != null)
+            float hoverRange = 300.0f;
+            float fadeOutRange = 200.0f;
+            float cursorDist = Vector2.Distance(WorldPosition, cam.ScreenToWorld(PlayerInput.MousePosition));
+            float hudInfoAlpha = MathHelper.Clamp(1.0f - (cursorDist - (hoverRange - fadeOutRange)) / fadeOutRange, 0.2f, 1.0f);
+            
+            if (hudInfoVisible && info != null)
             {
-                Vector2 namePos = new Vector2(pos.X, pos.Y - 110.0f - (5.0f / cam.Zoom)) - GUI.Font.MeasureString(Info.Name) * 0.5f / cam.Zoom;
-                Color nameColor = Color.White;
+                string name = Info.DisplayName;
+                if (controlled == null && name != Info.Name) name += " " + TextManager.Get("Disguised");
 
-                if (Character.Controlled != null && TeamID != Character.Controlled.TeamID)
+                Vector2 namePos = new Vector2(pos.X, pos.Y - 10.0f - (5.0f / cam.Zoom)) - GUI.Font.MeasureString(Info.Name) * 0.5f / cam.Zoom;
+
+                Vector2 screenSize = new Vector2(GameMain.GraphicsWidth, GameMain.GraphicsHeight);
+            	Vector2 viewportSize = new Vector2(cam.WorldView.Width, cam.WorldView.Height);
+            	namePos.X -= cam.WorldView.X; namePos.Y += cam.WorldView.Y;
+            	namePos *= screenSize / viewportSize;
+            	namePos.X = (float)Math.Floor(namePos.X); namePos.Y = (float)Math.Floor(namePos.Y);
+            	namePos *= viewportSize / screenSize;
+            	namePos.X += cam.WorldView.X; namePos.Y -= cam.WorldView.Y;
+
+                Color nameColor = Color.White;
+                if (Controlled != null && TeamID != Controlled.TeamID)
                 {
                     nameColor = Color.Red;
                 }
-                GUI.Font.DrawString(spriteBatch, Info.Name, namePos + new Vector2(1.0f / cam.Zoom, 1.0f / cam.Zoom), Color.Black, 0.0f, Vector2.Zero, 1.0f / cam.Zoom, SpriteEffects.None, 0.001f);
-                GUI.Font.DrawString(spriteBatch, Info.Name, namePos, nameColor, 0.0f, Vector2.Zero, 1.0f / cam.Zoom, SpriteEffects.None, 0.0f);
+                GUI.Font.DrawString(spriteBatch, name, namePos + new Vector2(1.0f / cam.Zoom, 1.0f / cam.Zoom), Color.Black, 0.0f, Vector2.Zero, 1.0f / cam.Zoom, SpriteEffects.None, 0.001f);
+                GUI.Font.DrawString(spriteBatch, name, namePos, nameColor * hudInfoAlpha, 0.0f, Vector2.Zero, 1.0f / cam.Zoom, SpriteEffects.None, 0.0f);
 
                 if (GameMain.DebugDraw)
                 {
@@ -316,11 +342,13 @@ namespace Barotrauma
 
             if (isDead) return;
 
-            if (health < maxHealth * 0.98f)
+            if (health < maxHealth * 0.98f && hudInfoVisible)
             {
-                Vector2 healthBarPos = new Vector2(pos.X - 50, DrawPosition.Y + 100.0f);
-
-                GUI.DrawProgressBar(spriteBatch, healthBarPos, new Vector2(100.0f, 15.0f), health / maxHealth, Color.Lerp(Color.Red, Color.Green, health / maxHealth) * 0.8f);
+                Vector2 healthBarPos = new Vector2(pos.X - 50, -pos.Y);
+                GUI.DrawProgressBar(spriteBatch, healthBarPos, new Vector2(100.0f, 15.0f), 
+                    health / maxHealth, 
+                    Color.Lerp(Color.Red, Color.Green, health / maxHealth) * 0.8f * hudInfoAlpha,
+                    new Color(0.5f, 0.57f, 0.6f, 1.0f) * hudInfoAlpha);
             }
         }
 
@@ -373,6 +401,19 @@ namespace Barotrauma
                 GameMain.ParticleManager.CreateParticle("bubbles",
                     ConvertUnits.ToDisplayUnits(centerOfMass) + Rand.Vector(5.0f),
                     new Vector2(Rand.Range(-50f, 50f), Rand.Range(-100f, 50f)));
+
+                GameMain.ParticleManager.CreateParticle("gib",
+                    WorldPosition + Rand.Vector(Rand.Range(0.0f, 50.0f)),
+                    Rand.Range(0.0f, MathHelper.TwoPi),
+                    Rand.Range(200.0f, 700.0f), null);
+            }
+
+            for (int i = 0; i < 30; i++)
+            {
+                GameMain.ParticleManager.CreateParticle("heavygib",
+                    WorldPosition + Rand.Vector(Rand.Range(0.0f, 50.0f)),
+                    Rand.Range(0.0f, MathHelper.TwoPi),
+                    Rand.Range(50.0f, 500.0f), null);
             }
         }
     }

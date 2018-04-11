@@ -102,11 +102,11 @@ namespace Barotrauma.Items.Components
                 {
                     if (GameMain.Client != null)
                     {
-                        panel.Item.CreateClientEvent<ConnectionPanel>(panel);
+                        panel.Item.CreateClientEvent(panel);
                     }
                     else if (GameMain.Server != null)
                     {
-                        panel.Item.CreateServerEvent<ConnectionPanel>(panel);
+                        panel.Item.CreateServerEvent(panel);
                     }
 
                     draggingConnected = null;
@@ -174,16 +174,16 @@ namespace Barotrauma.Items.Components
                             var otherConnection = draggingConnected.OtherConnection(this);
                             if (otherConnection == null)
                             {
-                                GameServer.Log(Character.Controlled + " connected a wire to " +
+                                GameServer.Log(Character.Controlled.LogName + " connected a wire to " +
                                     Item.Name + " (" + Name + ")", ServerLog.MessageType.ItemInteraction);
                             }
                             else
                             {
-                                GameServer.Log(Character.Controlled + " connected a wire from " +
+                                GameServer.Log(Character.Controlled.LogName + " connected a wire from " +
                                     Item.Name + " (" + Name + ") to " + otherConnection.item.Name + " (" + otherConnection.Name + ")", ServerLog.MessageType.ItemInteraction);
                             }
-                            
-                            Wires[index] = draggingConnected;
+
+                            AddLink(index, draggingConnected);
                         }
                     }
                 }
@@ -225,7 +225,7 @@ namespace Barotrauma.Items.Components
                 Vector2.Distance(end, PlayerInput.MousePosition) < 20.0f ||
                 new Rectangle((start.X < end.X) ? textX - 100 : textX, (int)start.Y - 5, 100, 14).Contains(PlayerInput.MousePosition));
 
-            string label = wire.Locked ? item.Name + "\n(Locked)" : item.Name;
+            string label = wire.Locked ? item.Name + "\n" + TextManager.Get("ConnectionLocked") : item.Name;
 
             GUI.DrawString(spriteBatch,
                 new Vector2(start.X < end.X ? textX - GUI.SmallFont.MeasureString(label).X : textX, start.Y - 5.0f),

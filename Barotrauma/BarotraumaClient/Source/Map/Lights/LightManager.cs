@@ -1,5 +1,6 @@
-﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Content;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -23,9 +24,24 @@ namespace Barotrauma.Lights
 
         public Color AmbientLight;
 
-        RenderTarget2D lightMap, losTexture;
+        private float lightmapScale = 0.5f;
+        public RenderTarget2D lightMap
+        {
+            get;
+            private set;
+        }
+        public RenderTarget2D losTexture
+        {
+            get;
+            private set;
+        }
 
         BasicEffect lightEffect;
+
+        public Effect LosEffect
+        {
+            get; private set;
+        }
         
         private static Texture2D alphaClearTexture;
 
@@ -44,27 +60,35 @@ namespace Barotrauma.Lights
 
         private float ambientLightUpdateTimer;
 
-        public LightManager(GraphicsDevice graphics)
+        public LightManager(GraphicsDevice graphics, ContentManager content)
         {
             lights = new List<LightSource>();
 
             AmbientLight = new Color(20, 20, 20, 255);
 
             visionCircle = Sprite.LoadTexture("Content/Lights/visioncircle.png");
+            //visionCircle = new Sprite("Content/Lights/visioncircle.png", new Vector2(0.2f, 0.5f));
 
             var pp = graphics.PresentationParameters;
 
             lightMap = new RenderTarget2D(graphics, 
-                        GameMain.GraphicsWidth, GameMain.GraphicsHeight, false,
+                       (int)(GameMain.GraphicsWidth*lightmapScale), (int)(GameMain.GraphicsHeight*lightmapScale), false,
                        pp.BackBufferFormat, pp.DepthStencilFormat, pp.MultiSampleCount,
                        RenderTargetUsage.DiscardContents);
 
-            losTexture = new RenderTarget2D(graphics, GameMain.GraphicsWidth, GameMain.GraphicsHeight);
+            losTexture = new RenderTarget2D(graphics, (int)(GameMain.GraphicsWidth*lightmapScale), (int)(GameMain.GraphicsHeight*lightmapScale), false, SurfaceFormat.Color, DepthFormat.None);
+            
+
+#if WINDOWS
+            LosEffect = content.Load<Effect>("losshader");
+#else
+            LosEffect = content.Load<Effect>("losshader_opengl");
+#endif
 
             if (lightEffect == null)
             {
                 lightEffect = new BasicEffect(GameMain.Instance.GraphicsDevice);
-                lightEffect.VertexColorEnabled = false;
+                lightEffect.VertexColorEnabled = true;
 
                 lightEffect.TextureEnabled = true;
                 lightEffect.Texture = LightSource.LightTexture;
@@ -141,9 +165,9 @@ namespace Barotrauma.Lights
             //clear to some small ambient light
             graphics.Clear(AmbientLight);
             graphics.BlendState = BlendState.Additive;
+
+            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Additive, null, null, null, null, cam.Transform * Matrix.CreateScale(new Vector3(lightmapScale, lightmapScale, 1.0f)));
             
-            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.Additive, null, null, null, null, cam.Transform);
-                       
             Matrix transform = cam.ShaderTransform
                 * Matrix.CreateOrthographic(GameMain.GraphicsWidth, GameMain.GraphicsHeight, -1, 1) * 0.5f;
 
@@ -151,29 +175,15 @@ namespace Barotrauma.Lights
 
             foreach (LightSource light in lights)
             {
-                if (light.Color.A < 1 || light.Range < 1.0f || !light.CastShadows || !light.Enabled) continue;
+                if (light.Color.A < 1 || light.Range < 1.0f || !light.Enabled) continue;
                 if (!MathUtils.CircleIntersectsRectangle(light.WorldPosition, light.Range, viewRect)) continue;
 
                 light.Draw(spriteBatch, lightEffect, transform);
             }
 
             lightEffect.World = Matrix.CreateTranslation(offset) * transform;
-                        
+            
             GameMain.ParticleManager.Draw(spriteBatch, false, null, Particles.ParticleBlendState.Additive);
-
-            if (Character.Controlled != null)
-            {
-                if (Character.Controlled.FocusedItem != null)
-                {
-                    Character.Controlled.FocusedItem.IsHighlighted = true;
-                    Character.Controlled.FocusedItem.Draw(spriteBatch, false, true);
-                    Character.Controlled.FocusedItem.IsHighlighted = true;
-                }
-                else if (Character.Controlled.FocusedCharacter != null)
-                {
-                    Character.Controlled.FocusedCharacter.Draw(spriteBatch);
-                }
-            }
 
             foreach (Hull hull in smoothedHullAmbientLights.Keys)
             {
@@ -187,14 +197,40 @@ namespace Barotrauma.Lights
                 GUI.DrawRectangle(spriteBatch,
                     new Vector2(drawRect.X, -drawRect.Y),
                     new Vector2(hull.Rect.Width, hull.Rect.Height),
-                    smoothedHullAmbientLights[hull] * 0.5f, true);
+                    smoothedHullAmbientLights[hull], true);
             }
 
+            if (Character.Controlled != null)
+            {
+                if (Character.Controlled.FocusedItem != null)
+                {
+                    Character.Controlled.FocusedItem.IsHighlighted = true;
+                }
+                if (Character.Controlled.FocusedCharacter != null)
+                {
+                    Character.Controlled.FocusedCharacter.Draw(spriteBatch);
+                }
+
+                foreach (Item item in Item.ItemList)
+                {
+                    if (item.IsHighlighted)
+                    {
+                        item.Draw(spriteBatch, false, true);
+                    }
+                }
+
+                Vector2 drawPos = Character.Controlled.DrawPosition;
+                drawPos.Y = -drawPos.Y;
+
+                //ambient light decreases the brightness of the halo (no need for a bright halo if the ambient light is bright enough)
+                float ambientBrightness = (AmbientLight.R + AmbientLight.B + AmbientLight.G) / 255.0f / 3.0f;
+                Color haloColor = Color.White * (1.0f - ambientBrightness);                
+                spriteBatch.Draw(
+                    LightSource.LightTexture, drawPos, null, haloColor * 0.4f, 0.0f,
+                    new Vector2(LightSource.LightTexture.Width / 2, LightSource.LightTexture.Height / 2), 1.0f, SpriteEffects.None, 0.0f);
+            }
             spriteBatch.End();
-
-            //clear alpha, to avoid messing stuff up later
-            //ClearAlphaToOne(graphics, spriteBatch);
-
+            
             graphics.SetRenderTarget(null);
             graphics.BlendState = BlendState.AlphaBlend;
         }
@@ -205,27 +241,28 @@ namespace Barotrauma.Lights
 
             graphics.SetRenderTarget(losTexture);
 
-                spriteBatch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, cam.Transform);
+            spriteBatch.Begin(SpriteSortMode.Deferred, null, null, null, null, null, cam.Transform * Matrix.CreateScale(new Vector3(lightmapScale, lightmapScale, 1.0f)));
+            
 
             if (ObstructVision)
             {
-                //graphics.Clear(Color.Black);
-
+                graphics.Clear(Color.Black);
                 Vector2 diff = lookAtPosition - ViewTarget.WorldPosition;
                 diff.Y = -diff.Y;
                 float rotation = MathUtils.VectorToAngle(diff);
-            
-                Vector2 scale = new Vector2(MathHelper.Clamp(diff.Length()/256.0f, 2.0f, 5.0f), 2.0f);
 
-                spriteBatch.Draw(visionCircle, new Vector2(ViewTarget.WorldPosition.X, -ViewTarget.WorldPosition.Y), null, Color.White, rotation, 
-                    new Vector2(LightSource.LightTexture.Width*0.2f, LightSource.LightTexture.Height/2), scale, SpriteEffects.None, 0.0f);
+                Vector2 scale = new Vector2(
+                    MathHelper.Clamp(diff.Length() / 256.0f, 2.0f, 5.0f), 2.0f);
+
+                spriteBatch.Draw(visionCircle, new Vector2(ViewTarget.WorldPosition.X, -ViewTarget.WorldPosition.Y), null, Color.White, rotation,
+                    new Vector2(LightSource.LightTexture.Width * 0.2f, LightSource.LightTexture.Height / 2), scale, SpriteEffects.None, 0.0f);
             }
             else
             {
                 graphics.Clear(Color.White);
             }
-
             spriteBatch.End();
+            
 
             //--------------------------------------
 
@@ -239,17 +276,53 @@ namespace Barotrauma.Lights
                     * Matrix.CreateOrthographic(GameMain.GraphicsWidth, GameMain.GraphicsHeight, -1, 1) * 0.5f;
 
                 var convexHulls = ConvexHull.GetHullsInRange(viewTarget.Position, cam.WorldView.Width*0.75f, viewTarget.Submarine);
-
                 if (convexHulls != null)
                 {
+                    List<VertexPositionColor> shadowVerts = new List<VertexPositionColor>();
+                    List<VertexPositionTexture> penumbraVerts = new List<VertexPositionTexture>();
                     foreach (ConvexHull convexHull in convexHulls)
                     {
-                        if (!convexHull.Intersects(camView)) continue;
-                        //if (!camView.Intersects(convexHull.BoundingBox)) continue;
+                        if (!convexHull.Enabled || !convexHull.Intersects(camView)) continue;
 
-                        convexHull.DrawShadows(graphics, cam, pos, shadowTransform);
+                        Vector2 relativeLightPos = pos;
+                        if (convexHull.ParentEntity?.Submarine != null) relativeLightPos -= convexHull.ParentEntity.Submarine.Position;
+
+                        convexHull.CalculateShadowVertices(relativeLightPos, true);
+
+                        //convert triangle strips to a triangle list
+                        for (int i = 0; i < convexHull.shadowVertexCount * 2 - 2; i++)
+                        {
+                            if (i % 2 == 0)
+                            {
+                                shadowVerts.Add(convexHull.ShadowVertices[i]);
+                                shadowVerts.Add(convexHull.ShadowVertices[i + 1]);
+                                shadowVerts.Add(convexHull.ShadowVertices[i + 2]);
+                            }
+                            else
+                            {
+                                shadowVerts.Add(convexHull.ShadowVertices[i]);
+                                shadowVerts.Add(convexHull.ShadowVertices[i + 2]);
+                                shadowVerts.Add(convexHull.ShadowVertices[i + 1]);
+                            }
+                        }
+
+                        penumbraVerts.AddRange(convexHull.PenumbraVertices);
                     }
-                }                
+
+                    if (shadowVerts.Count > 0)
+                    {
+                        ConvexHull.shadowEffect.World = shadowTransform;
+                        ConvexHull.shadowEffect.CurrentTechnique.Passes[0].Apply();
+                        graphics.DrawUserPrimitives(PrimitiveType.TriangleList, shadowVerts.ToArray(), 0, shadowVerts.Count / 3, VertexPositionColor.VertexDeclaration);
+
+                        if (penumbraVerts.Count > 0)
+                        {
+                            ConvexHull.penumbraEffect.World = shadowTransform;
+                            ConvexHull.penumbraEffect.CurrentTechnique.Passes[0].Apply();
+                            graphics.DrawUserPrimitives(PrimitiveType.TriangleList, penumbraVerts.ToArray(), 0, penumbraVerts.Count / 3, VertexPositionTexture.VertexDeclaration);
+                        }
+                    }
+                }
             }
             graphics.SetRenderTarget(null);            
         }
@@ -293,7 +366,7 @@ namespace Barotrauma.Lights
             var hull = Hull.FindHull(light.WorldPosition);
             if (hull == null) return hullAmbientLight;
 
-            return AmbientLightHulls(hull, hullAmbientLight, light.Color * (light.Range/2000.0f));
+            return AmbientLightHulls(hull, hullAmbientLight, light.Color * (light.Range / 2000.0f));
         }
 
         /// <summary>
@@ -334,26 +407,6 @@ namespace Barotrauma.Lights
             return hullAmbientLight;
         }
         
-        public void DrawLightMap(SpriteBatch spriteBatch, Effect effect)
-        {
-            if (!LightingEnabled) return;
-
-            spriteBatch.Begin(SpriteSortMode.Deferred, CustomBlendStates.Multiplicative, null, null, null, effect);
-            spriteBatch.Draw(lightMap, Vector2.Zero, Color.White);            
-            spriteBatch.End();
-        }
-
-        public void DrawLOS(SpriteBatch spriteBatch, Effect effect,bool renderingBackground)
-        {
-            if (!LosEnabled || ViewTarget == null) return;
-            
-            spriteBatch.Begin(SpriteSortMode.Deferred, renderingBackground ? CustomBlendStates.LOS : CustomBlendStates.Multiplicative, null, null, null, effect);
-            spriteBatch.Draw(losTexture, Vector2.Zero, Color.White);
-            spriteBatch.End();
-
-            if (!renderingBackground) ObstructVision = false;
-        }
-
         public void ClearLights()
         {
             lights.Clear();

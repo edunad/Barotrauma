@@ -16,21 +16,21 @@ namespace Barotrauma.Items.Components
 
         bool hasPower;
 
-        [Editable, HasDefaultValue(false, true)]
+        [Editable(ToolTip = "Does the machine require inputs from water detectors in order to show the water levels inside rooms."), Serialize(false, true)]
         public bool RequireWaterDetectors
         {
             get;
             set;
         }
 
-        [Editable, HasDefaultValue(true, true)]
+        [Editable(ToolTip = "Does the machine require inputs from oxygen detectors in order to show the oxygen levels inside rooms."), Serialize(true, true)]
         public bool RequireOxygenDetectors
         {
             get;
             set;
         }
 
-        [Editable, HasDefaultValue(false, true)]
+        [Editable(ToolTip = "Should damaged walls be displayed by the machine."), Serialize(false, true)]
         public bool ShowHullIntegrity
         {
             get;
@@ -61,7 +61,6 @@ namespace Barotrauma.Items.Components
             currPowerConsumption = powerConsumption;
 
             hasPower = voltage > minVoltage;
-
             if (hasPower)
             {
                 ApplyStatusEffects(ActionType.OnActive, deltaTime, null);

@@ -22,7 +22,7 @@ namespace Barotrauma.Items.Components
         
         private UsableIn usableIn;
                 
-        [HasDefaultValue(0.0f, false)]
+        [Serialize(0.0f, false)]
         public float Force
         {
             get { return force; }
@@ -30,7 +30,7 @@ namespace Barotrauma.Items.Components
         }
 
 #if CLIENT
-        [HasDefaultValue("", false)]
+        [Serialize("", false)]
         public string Particles
         {
             get { return particles; }
@@ -58,12 +58,11 @@ namespace Barotrauma.Items.Components
         
         public override bool Use(float deltaTime, Character character = null)
         {
-            if (character == null) return false;
-            if (!character.IsKeyDown(InputType.Aim) || character.Stun>0.0f) return false;
+            if (character == null || character.Removed) return false;
+            if (!character.IsKeyDown(InputType.Aim) || character.Stun > 0.0f) return false;
 
             IsActive = true;
             useState = 0.1f;
-
 
             if (character.AnimController.InWater)
             {

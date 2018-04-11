@@ -16,6 +16,9 @@ namespace Barotrauma.Items.Components
 
         Vector2 barrelPos;
 
+        bool? hasLight;
+        LightComponent lightComponent;
+
         float rotation, targetRotation;
 
         float reload, reloadTime;
@@ -26,49 +29,44 @@ namespace Barotrauma.Items.Components
 
         Camera cam;
 
-        [HasDefaultValue("0,0", false)]
-        public string BarrelPos
+        [Serialize("0,0", false)]
+        public Vector2 BarrelPos
         {
             get 
             { 
-                return XMLExtensions.Vector2ToString(barrelPos); 
+                return barrelPos; 
             }
             set 
             { 
-                barrelPos = XMLExtensions.ParseToVector2(value); 
+                barrelPos = value;
             }
         }
 
-        [HasDefaultValue(0.0f, false)]
+        [Serialize(0.0f, false)]
         public float LaunchImpulse
         {
             get { return launchImpulse; }
             set { launchImpulse = value; }
         }
 
-        [HasDefaultValue(5.0f, false)]
+        [Serialize(5.0f, false)]
         public float Reload
         {
             get { return reloadTime; }
             set { reloadTime = value; }
         }
 
-        [HasDefaultValue("0.0,0.0", true), Editable]
-        public string RotationLimits
+        [Serialize("0.0,0.0", true), Editable]
+        public Vector2 RotationLimits
         {
             get
             {
-                Vector2 limits = new Vector2(minRotation, maxRotation);
-                limits.X = MathHelper.ToDegrees(limits.X);
-                limits.Y = MathHelper.ToDegrees(limits.Y);
-
-                return XMLExtensions.Vector2ToString(limits); 
+                return new Vector2(MathHelper.ToDegrees(minRotation), MathHelper.ToDegrees(maxRotation)); 
             }
             set
             {
-                Vector2 vector = XMLExtensions.ParseToVector2(value);
-                minRotation = MathHelper.ToRadians(vector.X);
-                maxRotation = MathHelper.ToRadians(vector.Y);
+                minRotation = MathHelper.ToRadians(Math.Min(value.X, value.Y));
+                maxRotation = MathHelper.ToRadians(Math.Max(value.X, value.Y));
 
                 rotation = (minRotation + maxRotation) / 2;
             }
@@ -92,10 +90,31 @@ namespace Barotrauma.Items.Components
                     barrelSpritePath,
                     element.GetAttributeVector2("origin", Vector2.Zero));
             }
+
+            hasLight = null;
+
+            InitProjSpecific(element);
         }
+
+        partial void InitProjSpecific(XElement element);
 
         public override void Update(float deltaTime, Camera cam)
         {
+            if (hasLight == null)
+            {
+                List<LightComponent> lightComponents = item.GetComponents<LightComponent>();
+                
+                if (lightComponents != null && lightComponents.Count>0)
+                {
+                    lightComponent = lightComponents.Find(lc => lc.Parent == this);
+                    hasLight = (lightComponent != null);
+                }
+                else
+                {
+                    hasLight = false;
+                }
+            }
+
             this.cam = cam;
 
             if (reload > 0.0f) reload -= deltaTime;
@@ -127,6 +146,11 @@ namespace Barotrauma.Items.Components
             else if (rotMidDiff > maxDist)
             {
                 rotation = maxRotation;
+            }
+
+            if ((bool)hasLight)
+            {
+                lightComponent.Rotation = rotation;
             }
         }
 
@@ -161,7 +185,7 @@ namespace Barotrauma.Items.Components
 
             if (character != null)
             {
-                string msg = character.Name + " launched " + item.Name + " (projectile: " + projectiles[0].Item.Name;
+                string msg = character.LogName + " launched " + item.Name + " (projectile: " + projectiles[0].Item.Name;
                 if (projectiles[0].Item.ContainedItems == null || projectiles[0].Item.ContainedItems.All(i => i == null))
                 {
                     msg += ")";
@@ -244,9 +268,9 @@ namespace Barotrauma.Items.Components
 
                 if (batteryToLoad == null) return true;
 
-                if (batteryToLoad.RechargeSpeed < batteryToLoad.MaxRechargeSpeed*0.4f)
+                if (batteryToLoad.RechargeSpeed < batteryToLoad.MaxRechargeSpeed * 0.4f)
                 {
-                    objective.AddSubObjective(new AIObjectiveOperateItem(batteryToLoad, character, ""));
+                    objective.AddSubObjective(new AIObjectiveOperateItem(batteryToLoad, character, "", false));
                     return false;
                 }
             }
@@ -301,6 +325,19 @@ namespace Barotrauma.Items.Components
             return availablePower;
         }
 
+        private void GetAvailablePower(out float availableCharge, out float availableCapacity)
+        {
+            var batteries = item.GetConnectedComponents<PowerContainer>();
+
+            availableCharge = 0.0f;
+            availableCapacity = 0.0f;
+            foreach (PowerContainer battery in batteries)
+            {
+                availableCharge += battery.Charge;
+                availableCapacity += battery.Capacity;
+            }
+        }
+
         protected override void RemoveComponentSpecific()
         {
             base.RemoveComponentSpecific();
@@ -308,7 +345,7 @@ namespace Barotrauma.Items.Components
             if (barrelSprite != null) barrelSprite.Remove();
         }
 
-        private List<Projectile> GetLoadedProjectiles(bool returnFirst = false)
+        private List<Projectile> GetLoadedProjectiles(bool returnFirst = false, bool returnNull = false)
         {
             List<Projectile> projectiles = new List<Projectile>();
 
@@ -317,16 +354,30 @@ namespace Barotrauma.Items.Components
                 var projectileContainer = e as Item;
                 if (projectileContainer == null) continue;
 
-                var containedItems = projectileContainer.ContainedItems;
-                if (containedItems == null) continue;
-
-                for (int i = 0; i < containedItems.Length; i++)
+                if (returnNull)
                 {
-                    var projectileComponent = containedItems[i].GetComponent<Projectile>();
-                    if (projectileComponent != null)
+                    var itemContainer = projectileContainer.GetComponent<ItemContainer>();
+                    if (itemContainer == null) continue;
+                    if (itemContainer.Inventory == null) continue;
+                    if (itemContainer.Inventory.Items == null) continue;
+                    for (int i = 0; i < itemContainer.Inventory.Items.Length; i++)
                     {
-                        projectiles.Add(projectileComponent);
-                        if (returnFirst) return projectiles;
+                        projectiles.Add(itemContainer.Inventory.Items[i]?.GetComponent<Projectile>());                        
+                    }
+                }
+                else
+                {
+                    var containedItems = projectileContainer.ContainedItems;
+                    if (containedItems == null) continue;
+
+                    for (int i = 0; i < containedItems.Length; i++)
+                    {
+                        var projectileComponent = containedItems[i].GetComponent<Projectile>();
+                        if (projectileComponent != null)
+                        {
+                            projectiles.Add(projectileComponent);
+                            if (returnFirst) return projectiles;
+                        }
                     }
                 }
             }
@@ -355,14 +406,7 @@ namespace Barotrauma.Items.Components
             switch (connection.Name)
             {
                 case "position_in":
-                    Vector2 receivedPos = XMLExtensions.ParseToVector2(signal, false);
-
-                    Vector2 centerPos = new Vector2(item.WorldRect.X + barrelPos.X, item.WorldRect.Y - barrelPos.Y);
-
-                    Vector2 offset = receivedPos - centerPos;
-                    offset.Y = -offset.Y;
-                   
-                    targetRotation = MathUtils.WrapAngleTwoPi(MathUtils.VectorToAngle(offset));
+                    float.TryParse(signal, out targetRotation);
 
                     IsActive = true;
 

@@ -1,4 +1,4 @@
-﻿using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -110,13 +110,13 @@ namespace Barotrauma
             t = new Texture2D(graphicsDevice, 1, 1);
             t.SetData(new Color[] { Color.White });// fill the texture with white
 
-            submarineIcon = new Sprite("Content/UI/uiIcons.png", new Rectangle(0, 192, 64, 64), null);
+            submarineIcon = new Sprite("Content/UI/uiIcons.png", new Rectangle(0, 192, 64, 64));
             submarineIcon.Origin = submarineIcon.size / 2;
 
-            arrow = new Sprite("Content/UI/uiIcons.png", new Rectangle(80, 240, 16, 16), null);
+            arrow = new Sprite("Content/UI/uiIcons.png", new Rectangle(80, 240, 16, 16));
             arrow.Origin = arrow.size / 2;
 
-            SpeechBubbleIcon = new Sprite("Content/UI/uiIcons.png", new Rectangle(0, 129, 65, 61), null);
+            SpeechBubbleIcon = new Sprite("Content/UI/uiIcons.png", new Rectangle(0, 129, 65, 61));
             SpeechBubbleIcon.Origin = SpeechBubbleIcon.size / 2;
         }
 
@@ -427,12 +427,15 @@ namespace Barotrauma
                     ScreenOverlayColor, true);
             }
 
-            if (GameMain.DebugDraw)
+            if (GameMain.ShowFPS || GameMain.DebugDraw)
             {
-                DrawString(spriteBatch, new Vector2(10, 10), 
+                DrawString(spriteBatch, new Vector2(10, 10),
                     "FPS: " + (int)GameMain.FrameCounter.AverageFramesPerSecond,
                     Color.White, Color.Black * 0.5f, 0, SmallFont);
+            }
 
+            if (GameMain.DebugDraw)
+            {
                 DrawString(spriteBatch, new Vector2(10, 25),
                     "Physics: " + GameMain.World.UpdateTime,
                     Color.White, Color.Black * 0.5f, 0, SmallFont);
@@ -444,7 +447,7 @@ namespace Barotrauma
                 if (Screen.Selected.Cam != null)
                 {
                     DrawString(spriteBatch, new Vector2(10, 55),
-                        "Camera pos: " + Screen.Selected.Cam.Position.ToPoint(),
+                        "Camera pos: " + Screen.Selected.Cam.Position.ToPoint() + ", zoom: " + Screen.Selected.Cam.Zoom,
                         Color.White, Color.Black * 0.5f, 0, SmallFont);
                 }
 
@@ -459,13 +462,13 @@ namespace Barotrauma
                 {
                     Color clr = Color.White;
 
-                    string soundStr = i+": ";
+                    string soundStr = i + ": ";
 
                     var playingSound = Sounds.SoundManager.GetPlayingSound(i);
 
                     if (playingSound == null)
                     {
-                        soundStr+= "none";
+                        soundStr += "none";
                         clr *= 0.5f;
                     }
                     else
@@ -479,7 +482,7 @@ namespace Barotrauma
                         }
                     }
 
-                    GUI.DrawString(spriteBatch, new Vector2(200, i * 15), soundStr, clr, Color.Black * 0.5f, 0, GUI.SmallFont);
+                    GUI.DrawString(spriteBatch, new Vector2(300, i * 15), soundStr, clr, Color.Black * 0.5f, 0, GUI.SmallFont);
                 }
             }
             
@@ -546,18 +549,36 @@ namespace Barotrauma
             }            
         }
 
+        /// <summary>
+        /// Displays a message at the center of the screen, automatically preventing overlapping with other centered messages
+        /// </summary>
         public static void AddMessage(string message, Color color, float lifeTime = 3.0f, bool playSound = true)
         {
-            if (messages.Count>0 && messages[messages.Count-1].Text == message)
+            if (messages.Count > 0 && messages[messages.Count - 1].Text == message)
             {
                 messages[messages.Count - 1].LifeTime = lifeTime;
                 return;
             }
 
-            Vector2 currPos = new Vector2(GameMain.GraphicsWidth / 2.0f, GameMain.GraphicsHeight * 0.7f);
-            currPos.Y += messages.Count * 30;
+            Vector2 pos = new Vector2(GameMain.GraphicsWidth / 2.0f, GameMain.GraphicsHeight * 0.7f);
+            pos.Y += messages.FindAll(m => m.AutoCenter).Count * 30;
 
-            messages.Add(new GUIMessage(message, color, currPos, lifeTime));
+            messages.Add(new GUIMessage(message, color, pos, lifeTime, Alignment.Center, true));
+            if (playSound) PlayUISound(GUISoundType.Message);
+        }
+
+        /// <summary>
+        /// Display and automatically fade out a piece of text at an arbitrary position on the screen
+        /// </summary>
+        public static void AddMessage(string message, Vector2 position, Alignment alignment, Color color, float lifeTime = 3.0f, bool playSound = true)
+        {
+            if (messages.Count > 0 && messages[messages.Count - 1].Text == message)
+            {
+                messages[messages.Count - 1].LifeTime = lifeTime;
+                return;
+            }
+
+            messages.Add(new GUIMessage(message, color, position, lifeTime, alignment, false));
             if (playSound) PlayUISound(GUISoundType.Message);
         }
 
@@ -587,23 +608,24 @@ namespace Barotrauma
                     alpha -= 1.0f - msg.LifeTime;
                 }
 
-                msg.Pos = MathUtils.SmoothStep(msg.Pos, currPos, deltaTime*20.0f);
+                if (msg.AutoCenter)
+                {
+                    msg.Pos = MathUtils.SmoothStep(msg.Pos, currPos, deltaTime * 20.0f);
+                    currPos.Y += 30.0f;
+                }
 
                 Font.DrawString(spriteBatch, msg.Text,
                     new Vector2((int)msg.Pos.X - 1, (int)msg.Pos.Y - 1),
-                    Color.Black * alpha*0.5f, 0.0f,
-                    new Vector2((int)(0.5f * msg.Size.X), (int)(0.5f * msg.Size.Y)), 1.0f, SpriteEffects.None, 0.0f);
+                    Color.Black * alpha * 0.5f, 0.0f,
+                    msg.Origin, 1.0f, SpriteEffects.None, 0.0f);
 
                 Font.DrawString(spriteBatch, msg.Text,
-                    new Vector2((int)msg.Pos.X, (int)msg.Pos.Y), 
+                    new Vector2((int)msg.Pos.X, (int)msg.Pos.Y),
                     msg.Color * alpha, 0.0f,
-                    new Vector2((int)(0.5f * msg.Size.X), (int)(0.5f * msg.Size.Y)), 1.0f, SpriteEffects.None, 0.0f);
+                    msg.Origin, 1.0f, SpriteEffects.None, 0.0f);
 
 
-
-                currPos.Y += 30.0f;
-
-                messages[0].LifeTime -= deltaTime/i;
+                messages[0].LifeTime -= deltaTime / i;
 
                 i++;
             }

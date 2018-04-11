@@ -1,6 +1,7 @@
 ﻿using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Xml.Linq;
 
@@ -61,7 +62,8 @@ namespace Barotrauma
             if (GameMain.NetworkMember != null)
             {
                 List<string> monsterNames = GameMain.NetworkMember.monsterEnabled.Keys.ToList();
-                string tryKey = monsterNames.Find(s => characterFile.ToLower().Contains(s.ToLower()));
+                string characterName = Path.GetFileName(Path.GetDirectoryName(characterFile)).ToLower();
+                string tryKey = monsterNames.Find(s => characterName == s.ToLower());
                 if (!string.IsNullOrWhiteSpace(tryKey))
                 {
                     if (!GameMain.NetworkMember.monsterEnabled[tryKey]) disallowed = true; //spawn was disallowed by host
@@ -73,19 +75,23 @@ namespace Barotrauma
         {
             base.Init();
 
-            monsters = SpawnMonsters(Rand.Range(minAmount, maxAmount, Rand.RandSync.Server));
+            monsters = SpawnMonsters(Rand.Range(minAmount, maxAmount, Rand.RandSync.Server), false);
             if (GameSettings.VerboseLogging)
             {
-                DebugConsole.NewMessage("Initialized MonsterEvent (" + monsters[0]?.SpeciesName + " x" + monsters.Length + ")", Color.White);
+                if (monsters != null)
+                {
+                    DebugConsole.NewMessage("Initialized MonsterEvent (" + monsters[0]?.SpeciesName + " x" + monsters.Length + ")", Color.White);
+                }
             }
         }
 
-        private Character[] SpawnMonsters(int amount)
+        private Character[] SpawnMonsters(int amount, bool createNetworkEvent)
         {
             if (disallowed) return null;
             
             Vector2 spawnPos;
-            if (!Level.Loaded.TryGetInterestingPosition(true, spawnPosType, true, out spawnPos))
+            float minDist = spawnPosType == Level.PositionType.Ruin ? 0.0f : 20000.0f;
+            if (!Level.Loaded.TryGetInterestingPosition(true, spawnPosType, minDist, out spawnPos))
             {
                 //no suitable position found, disable the event
                 repeat = false;
@@ -95,13 +101,23 @@ namespace Barotrauma
 
             var monsters = new Character[amount];
 
-            if (spawnDeep) spawnPos.Y -= Level.Loaded.Size.Y;
+            if (spawnDeep)
+            {
+                spawnPos.Y -= Level.Loaded.Size.Y;
+                //disable the event if the ocean floor is too high up to spawn the monster deep
+                if (spawnPos.Y < Level.Loaded.GetBottomPosition(spawnPos.X).Y)
+                {
+                    repeat = false;
+                    Finished();
+                    return null;
+                }
+            }
                 
             for (int i = 0; i < amount; i++)
             {
                 spawnPos.X += Rand.Range(-0.5f, 0.5f, Rand.RandSync.Server);
                 spawnPos.Y += Rand.Range(-0.5f, 0.5f, Rand.RandSync.Server);
-                monsters[i] = Character.Create(characterFile, spawnPos, null, GameMain.Client != null, true, false);
+                monsters[i] = Character.Create(characterFile, spawnPos, null, GameMain.Client != null, true, createNetworkEvent);
             }
 
             return monsters;
@@ -127,7 +143,7 @@ namespace Barotrauma
                 {
                     if (monsters[i] == null || monsters[i].Removed || monsters[i].IsDead)
                     {
-                        monsters[i] = SpawnMonsters(1)[0];
+                        monsters[i] = SpawnMonsters(1, true)[0];
                     }
                 }
             }

@@ -8,7 +8,7 @@ using System.Xml.Linq;
 
 namespace Barotrauma
 {
-    partial class Hull : MapEntity, IPropertyObject, IServerSerializable
+    partial class Hull : MapEntity, ISerializableEntity, IServerSerializable
     {
         const float NetworkUpdateInterval = 0.5f;
 
@@ -40,8 +40,8 @@ namespace Barotrauma
         //how much excess water the room can contain  (= more than the volume of the room)
         public const float MaxCompress = 10000f;
         
-        public readonly Dictionary<string, ObjectProperty> properties;
-        public Dictionary<string, ObjectProperty> ObjectProperties
+        public readonly Dictionary<string, SerializableProperty> properties;
+        public Dictionary<string, SerializableProperty> SerializableProperties
         {
             get { return properties; }
         }
@@ -106,7 +106,7 @@ namespace Barotrauma
             }
         }
 
-        public override bool IsLinkable
+        public override bool Linkable
         {
             get { return true; }
         }
@@ -139,7 +139,7 @@ namespace Barotrauma
             }
         }
 
-        [HasDefaultValue(90.0f, true)]
+        [Serialize(90.0f, true)]
         public float Oxygen
         {
             get { return oxygen; }
@@ -197,7 +197,7 @@ namespace Barotrauma
 
             fireSources = new List<FireSource>();
 
-            properties = ObjectProperty.GetProperties(this);
+            properties = SerializableProperty.GetProperties(this);
 
             int arraySize = (rectangle.Width / WaveWidth + 1);
             waveY = new float[arraySize];
@@ -255,7 +255,7 @@ namespace Barotrauma
 
         public override MapEntity Clone()
         {
-            return new Hull(MapEntityPrefab.list.Find(m => m.Name == "Hull"), rect, Submarine);
+            return new Hull(MapEntityPrefab.Find("Hull"), rect, Submarine);
         }
         
         public static EntityGrid GenerateEntityGrid(Submarine submarine)
@@ -558,23 +558,23 @@ namespace Barotrauma
 
             return null;
         }
-        
+
         //returns the water block which contains the point (or null if it isn't inside any)
-        public static Hull FindHullOld(Vector2 position, Hull guess = null, bool useWorldCoordinates = true)
+        public static Hull FindHullOld(Vector2 position, Hull guess = null, bool useWorldCoordinates = true, bool inclusive = false)
         {
-            return FindHullOld(position, hullList, guess, useWorldCoordinates);
+            return FindHullOld(position, hullList, guess, useWorldCoordinates, inclusive);
         }
 
-        public static Hull FindHullOld(Vector2 position, List<Hull> hulls, Hull guess = null, bool useWorldCoordinates = true)
+        public static Hull FindHullOld(Vector2 position, List<Hull> hulls, Hull guess = null, bool useWorldCoordinates = true, bool inclusive = false)
         {
             if (guess != null && hulls.Contains(guess))
             {
-                if (Submarine.RectContains(useWorldCoordinates ? guess.WorldRect : guess.rect, position)) return guess;
+                if (Submarine.RectContains(useWorldCoordinates ? guess.WorldRect : guess.rect, position, inclusive)) return guess;
             }
 
             foreach (Hull hull in hulls)
             {
-                if (Submarine.RectContains(useWorldCoordinates ? hull.WorldRect : hull.rect, position)) return hull;
+                if (Submarine.RectContains(useWorldCoordinates ? hull.WorldRect : hull.rect, position, inclusive)) return hull;
             }
 
             return null;
@@ -708,20 +708,13 @@ namespace Barotrauma
         public static void Load(XElement element, Submarine submarine)
         {
             Rectangle rect = Rectangle.Empty;
-
             if (element.Attribute("rect") != null)
             {
-                string rectString = element.GetAttributeString("rect", "0,0,0,0");
-                string[] rectValues = rectString.Split(',');
-
-                rect = new Rectangle(
-                    int.Parse(rectValues[0]),
-                    int.Parse(rectValues[1]),
-                    int.Parse(rectValues[2]),
-                    int.Parse(rectValues[3]));
+                rect = element.GetAttributeRect("rect", Rectangle.Empty);
             }
             else
             {
+                //backwards compatibility
                 rect = new Rectangle(
                     int.Parse(element.Attribute("x").Value),
                     int.Parse(element.Attribute("y").Value),
@@ -729,7 +722,7 @@ namespace Barotrauma
                     int.Parse(element.Attribute("height").Value));
             }
 
-            Hull h = new Hull(MapEntityPrefab.list.Find(m => m.Name == "Hull"), rect, submarine);
+            Hull h = new Hull(MapEntityPrefab.Find("Hull"), rect, submarine);
 
             h.waterVolume = element.GetAttributeFloat("pressure", 0.0f);
 

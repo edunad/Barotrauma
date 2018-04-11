@@ -13,7 +13,7 @@ using Barotrauma.Lights;
 
 namespace Barotrauma.Items.Components
 {
-    partial class Door : ItemComponent, IDrawableComponent, IServerSerializable
+    partial class Door : Pickable, IDrawableComponent, IServerSerializable
     {
         private Gap linkedGap;
 
@@ -111,26 +111,14 @@ namespace Barotrauma.Items.Components
             }
         }
         
-        [HasDefaultValue("0.0,0.0,0.0,0.0", false)]
-        public string Window
-        {
-            get { return XMLExtensions.Vector4ToString(new Vector4(window.X, window.Y, window.Width, window.Height)); }
-            set
-            {
-                Vector4 vector = XMLExtensions.ParseToVector4(value);
-                if (vector.Z != 0.0f || vector.W != 0.0f)
-                {
-                    window = new Rectangle((int)vector.X, (int)vector.Y, (int)vector.Z, (int)vector.W);
-                }
-            }
-        }
-
-        public Rectangle WindowRect
+        [Serialize("0.0,0.0,0.0,0.0", false)]
+        public Rectangle Window
         {
             get { return window; }
+            set { window = value; }
         }
-
-        [Editable, HasDefaultValue(false, true)]
+        
+        [Editable, Serialize(false, true)]
         public bool IsOpen
         {
             get { return isOpen; }
@@ -161,7 +149,8 @@ namespace Barotrauma.Items.Components
             : base(item, element)
         {
             isHorizontal = element.GetAttributeBool("horizontal", false);
-            
+            canBePicked = element.GetAttributeBool("canbepicked", false);
+
             foreach (XElement subElement in element.Elements())
             {
                 string texturePath = subElement.GetAttributeString("texture", "");
@@ -215,12 +204,28 @@ namespace Barotrauma.Items.Components
 #endif
         }
 
+        public override bool HasRequiredItems(Character character, bool addMessage)
+        {
+            if (item.Condition <= 0.0f) return true; //For repairing
+
+            //this is a bit pointless atm because if canBePicked is false it won't allow you to do Pick() anyway, however it's still good for future-proofing.
+            return requiredItems.Any() ? base.HasRequiredItems(character, addMessage) : canBePicked;
+        }
 
         public override bool Pick(Character picker)
         {
-            isOpen = !isOpen;
+            return item.Condition <= 0.0f ? true : base.Pick(picker);
+        }
 
-            return true;
+        public override bool OnPicked(Character picker)
+        {
+            if (item.Condition <= 0.0f) return true; //repairs
+
+            SetState(predictedState == null ? !isOpen : !predictedState.Value, false, true); //crowbar function
+#if CLIENT
+            PlaySound(ActionType.OnPicked, item.WorldPosition);
+#endif
+            return false;
         }
 
         public override bool Select(Character character)
@@ -380,7 +385,7 @@ namespace Barotrauma.Items.Components
                     if (Math.Sign(diff) != dir)
                     {
 #if CLIENT
-                        SoundPlayer.PlayDamageSound(DamageSoundType.LimbBlunt, 1.0f, body);
+                        SoundPlayer.PlayDamageSound("LimbBlunt", 1.0f, body);
 #endif
 
                         if (isHorizontal)
@@ -431,7 +436,7 @@ namespace Barotrauma.Items.Components
             bool newState = predictedState == null ? isOpen : predictedState.Value;
             if (sender != null && wasOpen != newState)
             {
-                GameServer.Log(sender.Name + (newState ? " opened " : " closed ") + item.Name, ServerLog.MessageType.ItemInteraction);
+                GameServer.Log(sender.LogName + (newState ? " opened " : " closed ") + item.Name, ServerLog.MessageType.ItemInteraction);
             }
         }
 

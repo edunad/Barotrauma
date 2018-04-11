@@ -17,11 +17,11 @@ namespace Barotrauma
             private set;
         }
 
-        Sound hitSound;
+        private string hitSoundTag;
 
-        public Sound HitSound
+        public string HitSoundTag
         {
-            get { return hitSound; }
+            get { return hitSoundTag; }
         }
 
         partial void InitProjSpecific(XElement element)
@@ -34,7 +34,12 @@ namespace Barotrauma
                         LightSource = new LightSource(subElement);
                         break;
                     case "sound":
-                        hitSound = Sound.Load(subElement.GetAttributeString("file", ""));
+                        hitSoundTag = subElement.GetAttributeString("tag", "");
+                        if (string.IsNullOrWhiteSpace(hitSoundTag))
+                        {
+                            //legacy support
+                            hitSoundTag = subElement.GetAttributeString("file", "");
+                        }
                         break;
                 }
             }
@@ -45,6 +50,7 @@ namespace Barotrauma
             if (LightSource != null)
             {
                 LightSource.ParentSub = body.Submarine;
+                LightSource.Rotation = (dir == Direction.Right) ? body.Rotation : body.Rotation - MathHelper.Pi;
             }
         }
 
@@ -80,6 +86,7 @@ namespace Barotrauma
             if (LightSource != null)
             {
                 LightSource.Position = body.DrawPosition;
+                LightSource.LightSpriteEffect = (dir == Direction.Right) ? SpriteEffects.None : SpriteEffects.FlipVertically;
             }
 
             foreach (WearableSprite wearable in wearingItems)
